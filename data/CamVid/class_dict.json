@@ -1,0 +1,194 @@
+[
+  {
+    "name": "Animal",
+    "r": 64,
+    "g": 128,
+    "b": 64
+  },
+  {
+    "name": "Archway",
+    "r": 192,
+    "g": 0,
+    "b": 128
+  },
+  {
+    "name": "Bicyclist",
+    "r": 0,
+    "g": 128,
+    "b": 192
+  },
+  {
+    "name": "Bridge",
+    "r": 0,
+    "g": 128,
+    "b": 64
+  },
+  {
+    "name": "Building",
+    "r": 128,
+    "g": 0,
+    "b": 0
+  },
+  {
+    "name": "Car",
+    "r": 64,
+    "g": 0,
+    "b": 128
+  },
+  {
+    "name": "CartLuggagePram",
+    "r": 64,
+    "g": 0,
+    "b": 192
+  },
+  {
+    "name": "Child",
+    "r": 192,
+    "g": 128,
+    "b": 64
+  },
+  {
+    "name": "Column_Pole",
+    "r": 192,
+    "g": 192,
+    "b": 128
+  },
+  {
+    "name": "Fence",
+    "r": 64,
+    "g": 64,
+    "b": 128
+  },
+  {
+    "name": "LaneMkgsDriv",
+    "r": 128,
+    "g": 0,
+    "b": 192
+  },
+  {
+    "name": "LaneMkgsNonDriv",
+    "r": 192,
+    "g": 0,
+    "b": 64
+  },
+  {
+    "name": "Misc_Text",
+    "r": 128,
+    "g": 128,
+    "b": 64
+  },
+  {
+    "name": "MotorcycleScooter",
+    "r": 192,
+    "g": 0,
+    "b": 192
+  },
+  {
+    "name": "OtherMoving",
+    "r": 128,
+    "g": 64,
+    "b": 64
+  },
+  {
+    "name": "ParkingBlock",
+    "r": 64,
+    "g": 192,
+    "b": 128
+  },
+  {
+    "name": "Pedestrian",
+    "r": 64,
+    "g": 64,
+    "b": 0
+  },
+  {
+    "name": "Road",
+    "r": 128,
+    "g": 64,
+    "b": 128
+  },
+  {
+    "name": "RoadShoulder",
+    "r": 128,
+    "g": 128,
+    "b": 192
+  },
+  {
+    "name": "Sidewalk",
+    "r": 0,
+    "g": 0,
+    "b": 192
+  },
+  {
+    "name": "SignSymbol",
+    "r": 192,
+    "g": 128,
+    "b": 128
+  },
+  {
+    "name": "Sky",
+    "r": 128,
+    "g": 128,
+    "b": 128
+  },
+  {
+    "name": "SUVPickupTruck",
+    "r": 64,
+    "g": 128,
+    "b": 192
+  },
+  {
+    "name": "TrafficCone",
+    "r": 0,
+    "g": 0,
+    "b": 64
+  },
+  {
+    "name": "TrafficLight",
+    "r": 0,
+    "g": 64,
+    "b": 64
+  },
+  {
+    "name": "Train",
+    "r": 192,
+    "g": 64,
+    "b": 128
+  },
+  {
+    "name": "Tree",
+    "r": 128,
+    "g": 128,
+    "b": 0
+  },
+  {
+    "name": "Truck_Bus",
+    "r": 192,
+    "g": 128,
+    "b": 192
+  },
+  {
+    "name": "Tunnel",
+    "r": 64,
+    "g": 0,
+    "b": 64
+  },
+  {
+    "name": "VegetationMisc",
+    "r": 192,
+    "g": 192,
+    "b": 0
+  },
+  {
+    "name": "Void",
+    "r": 0,
+    "g": 0,
+    "b": 0
+  },
+  {
+    "name": "Wall",
+    "r": 64,
+    "g": 192,
+    "b": 0
+  }
+]
