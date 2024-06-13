@@ -5,6 +5,11 @@ The **InpainTor** model has the capability to recognize objects and perform inpa
 This enables the model to selectively remove and fill in missing or unwanted objects in images, while preserving the
 surrounding context.
 
+## TODO:
+
+    1. Train the model on the RORD dataset.
+    2. Test the model performance.
+
 ## Environment setup
 
 ### Conda environment
