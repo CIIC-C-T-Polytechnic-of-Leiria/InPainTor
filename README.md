@@ -7,6 +7,9 @@ surrounding context.
 
 ## TODO:
 
+    0. Selecão de Classes, Embutir isso na arquitetura e dataset
+    0. Corrigir Logs duplicados
+    ###############################################
     1. Train the model on the RORD dataset.
     2. Test the model performance.
 
@@ -27,7 +30,7 @@ Source. https://github.com/Forty-lock/RORD
 
 ### **PAL4Inpaint**: Perceptual Artifacts Localization for Inpainting
 
-Rejected 🚫: Lack of semantic information (object segmentation).
+**Rejected 🚫**: Lack of semantic information (object segmentation).
 
 Source: https://github.com/owenzlz/PAL4Inpaint/tree/main
 
@@ -57,7 +60,7 @@ InpaintTor/
 │   ├── data_augmentation.py  📑: Data augmentation
 │   ├── dataset.py            📊: Dataset implementation
 │   ├── inference.py          📊: Inference script
-│   ├── inpaintor_model.py    📑: Inpaintor model implementation
+│   ├── model.py    📑: Inpaintor model implementation
 │   ├── layers.py             📊: Model layers
 │   ├── logger.py             📊: Logger implementation
 │   └── train.py              📊: Training script

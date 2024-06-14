@@ -1,16 +1,32 @@
 import datetime
 import os
+import sys
 import warnings
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from loguru import logger
 from matplotlib.ticker import MultipleLocator
 
 warnings.filterwarnings("ignore")
 
+# Configure loguru logger
+logger.remove()  # Remove default handler
 
-class Logger:
-    def __init__(self, model_name, log_dir='logs'):
+# Create a separate logger instance for the console handler
+console_logger = logger.bind()
+console_logger.add(sys.stdout, level="INFO", format="{time:MMMM D, YYYY - HH:mm:ss} | {level} | {message}")
+
+# Create a separate logger instance for the file handler
+file_logger = logger.bind()
+file_logger.add("logs/{time:YYYY-MM-DD}.log",
+                level="INFO",
+                format="{time:MMMM D, YYYY - HH:mm:ss} | {level} | {message}",
+                rotation="1 day")
+
+
+class ModelPerformanceTracker:
+    def __init__(self, model_name: str, log_dir: str = 'logs'):
         self.model_name = model_name
         self.log_dir = log_dir
         self.metrics = {'train_loss': [], 'val_loss': []}
@@ -28,23 +44,15 @@ class Logger:
 
     def save_log_to_file(self, epoch, train_loss, val_loss):
         log_path = os.path.join(self.log_dir, f'metrics_{self.model_name}.txt')
-        with open(log_path, 'a') as f:
-            f.write(
-                f'Epoch {epoch + 1}, Timestamp: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}, Train '
-                f'Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: '
-                f'{self.best_val_loss:.4f}\n')
+        file_logger.info(
+            f'Epoch {epoch + 1}, Timestamp: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}, Train '
+            f'Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: '
+            f'{self.best_val_loss:.4f}')
 
 
 class Plotter:
-    """Class to read and plot training and validation loss from a log file.
-
-        Usage:
-            plotter = Plotter('logs/metrics_model_name.txt')
-            plotter.plot(log_scale=True)
-    """
-
-    def __init__(self, file_path):
-        self.file_path = file_path
+    def __init__(self, log_file_path: str):
+        self.file_path = log_file_path
         self.data = self.read_data()
 
     def read_data(self):
@@ -72,6 +80,8 @@ class Plotter:
         mpl.rcParams['font.family'] = 'serif'
         mpl.rcParams['font.serif'] = ['cmr10']
 
+        console_logger.debug('Plotting training and validation loss...')
+
         plt.grid(True, color='gray', linestyle='--', linewidth=0.5)
         plt.plot(epochs, train_losses, label='Train Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
         plt.plot(epochs, val_losses, label='Val Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
@@ -87,3 +97,4 @@ class Plotter:
         ax.yaxis.set_major_locator(y_major_locator)
         ax.yaxis.set_minor_locator(y_minor_locator)
         plt.show()
+        console_logger.debug('Plotting completed.')

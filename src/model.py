@@ -30,12 +30,13 @@ class SharedEncoder(Module):
         enc2 = self.conv_block2(enc1)
         enc3 = self.conv_block3(enc2)
         enc4 = self.conv_block4(enc3)
-        # print(f"Enc1: {enc1.shape}, Enc2: {enc2.shape}, Enc3: {enc3.shape}, Enc4: {enc4.shape}")
+        # print(
+        #     f"Input: {input_tensor.shape}, Enc1: {enc1.shape}, Enc2: {enc2.shape}, Enc3: {enc3.shape}, Enc4: {enc4.shape}")
         return enc1, enc2, enc3, enc4
 
 
 class SegmentorDecoder(Module):
-    def __init__(self, in_channels: int, num_classes: int = 40, selected_classes: List[int] = [1, 2, 3],
+    def __init__(self, in_channels: int, num_classes: int = 40, selected_classes: List[int] = [0],
                  base_chs: int = 16):
         super(SegmentorDecoder, self).__init__()
         self.conv_transp_block1 = SepConvTranspBlock(in_channels, out_channels=base_chs * 16)
@@ -46,6 +47,7 @@ class SegmentorDecoder(Module):
 
     def forward(self, enc4, enc3, enc2):
         seg1 = self.conv_transp_block1(enc4)
+        # print(f"Seg1: {seg1.shape}, Enc3: {enc3.shape}, Enc4: {enc4.shape}")
         seg_cat1 = cat([seg1, enc3], dim=1)  # seg1: (64, 64, 512), enc3: (64, 64, 256)
         seg2 = self.conv_transp_block2(seg_cat1)
         seg_cat2 = cat([seg2, enc2], dim=1)
@@ -102,8 +104,27 @@ class GenerativeDecoder(Module):
 
 
 class InpainTor(Module):
-    def __init__(self, num_classes: int = 40, selected_classes: List[int] = [1, 2, 3], base_chs: int = 16):
-        super(InpainTor, self).__init__()
+    """
+    InpainTor: A Generative model for segmentation based inpainting.
+
+    Args:
+        num_classes (int): Number of classes in the dataset (defaults to COCO dataset classes: 80).
+        selected_classes (List[int]): List of selected classes for segmentation (defaults to [0]: person).
+        base_chs (int): Base number of channels for the model (defaults to 16).
+
+    Returns:
+        dict: Dictionary containing the mask and inpainted image.
+    """
+
+    # def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
+    #     super(InpainTor, self).__init__()
+    #     self.shared_encoder = SharedEncoder()
+    #     self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes,
+    #                                             selected_classes=selected_classes)
+    #     self.generative_decoder = GenerativeDecoder()
+
+    def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
+        super().__init__()  # Call the parent class's __init__ method
         self.shared_encoder = SharedEncoder()
         self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes,
                                                 selected_classes=selected_classes)
@@ -112,7 +133,5 @@ class InpainTor(Module):
     def forward(self, x):
         _, enc2, enc3, enc4 = self.shared_encoder(x)
         masked_out, seg2, seg3 = self.segment_decoder(enc4, enc3, enc2)
-        # print(f"\n seg_out.shape: {seg_out.shape}") input_image, enc4, masked_out, seg2, seg3):
         out_gen = self.generative_decoder(x, enc4, masked_out, seg2, seg3)
-
-        return out_gen
+        return {'mask': masked_out, 'inpainted_image': out_gen}

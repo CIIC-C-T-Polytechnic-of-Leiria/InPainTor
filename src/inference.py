@@ -17,14 +17,14 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import dataset
-import inpaintor_model
+import model
 
 # Reload the modules in case they have been modified
 importlib.reload(dataset)
-importlib.reload(inpaintor_model)
+importlib.reload(model)
 
 from dataset import CamVidDataset
-from inpaintor_model import InpainTor
+from model import InpainTor
 
 
 def inference(model_path: str, data_dir: str, image_size: tuple, mask_size: tuple, batch_size: int,
