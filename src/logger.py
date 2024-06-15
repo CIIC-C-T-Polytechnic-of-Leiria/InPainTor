@@ -1,3 +1,7 @@
+"""
+ logger.py
+"""
+
 import datetime
 import os
 import sys
@@ -10,19 +14,11 @@ from matplotlib.ticker import MultipleLocator
 
 warnings.filterwarnings("ignore")
 
-# Configure loguru logger
-logger.remove()  # Remove default handler
-
-# Create a separate logger instance for the console handler
-console_logger = logger.bind()
-console_logger.add(sys.stdout, level="INFO", format="{time:MMMM D, YYYY - HH:mm:ss} | {level} | {message}")
-
-# Create a separate logger instance for the file handler
-file_logger = logger.bind()
-file_logger.add("logs/{time:YYYY-MM-DD}.log",
-                level="INFO",
-                format="{time:MMMM D, YYYY - HH:mm:ss} | {level} | {message}",
-                rotation="1 day")
+# Create a single logger instance
+logger.remove()  # Remove the default logger
+logger.add(sys.stdout, level="INFO", format="{time:MMMM D, YYYY - HH:mm:ss} | {level} | {message}")
+logger.add("logs/{time:YYYY-MM-DD}.log", level="INFO", format="{time:MMMM D, YYYY - HH:mm:ss} | {level} | {message}",
+           rotation="1 day")
 
 
 class ModelPerformanceTracker:
@@ -44,13 +40,17 @@ class ModelPerformanceTracker:
 
     def save_log_to_file(self, epoch, train_loss, val_loss):
         log_path = os.path.join(self.log_dir, f'metrics_{self.model_name}.txt')
-        file_logger.info(
+        logger.info(
             f'Epoch {epoch + 1}, Timestamp: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}, Train '
             f'Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: '
             f'{self.best_val_loss:.4f}')
 
 
 class Plotter:
+    """
+    Usage: Plotter('logs/metrics_InpainTor.txt').plot(log_scale=True)
+    """
+
     def __init__(self, log_file_path: str):
         self.file_path = log_file_path
         self.data = self.read_data()
@@ -80,7 +80,7 @@ class Plotter:
         mpl.rcParams['font.family'] = 'serif'
         mpl.rcParams['font.serif'] = ['cmr10']
 
-        console_logger.debug('Plotting training and validation loss...')
+        logger.debug('Plotting training and validation loss...')
 
         plt.grid(True, color='gray', linestyle='--', linewidth=0.5)
         plt.plot(epochs, train_losses, label='Train Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
@@ -97,4 +97,4 @@ class Plotter:
         ax.yaxis.set_major_locator(y_major_locator)
         ax.yaxis.set_minor_locator(y_minor_locator)
         plt.show()
-        console_logger.debug('Plotting completed.')
+        logger.debug('Plotting completed.')

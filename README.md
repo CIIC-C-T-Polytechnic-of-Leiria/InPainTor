@@ -1,6 +1,6 @@
 # InPainTor 🎨
 
-The **InpainTor** model has the capability to recognize objects and perform inpainting on specific objects in real-time.
+The **InPainTor** model has the capability to recognize objects and perform inpainting on specific objects in real-time.
 
 This enables the model to selectively remove and fill in missing or unwanted objects in images, while preserving the
 surrounding context.

@@ -137,3 +137,6 @@ cython_debug/
 # Ignore contents of the following directories
 data/CamVid
 .idea
+
+# Ignore the following files
+.pth

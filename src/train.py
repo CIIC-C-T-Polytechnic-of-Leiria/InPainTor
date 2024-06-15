@@ -1,3 +1,7 @@
+"""
+ train.py
+"""
+
 import argparse
 import datetime
 import importlib
@@ -22,30 +26,32 @@ importlib.reload(logger)
 
 from data_augmentation import RandAugment
 from dataset import RORDDataset
-from logger import ModelPerformanceTracker
+from logger import ModelPerformanceTracker, Plotter
 from model import InpainTor
 
 loguru.logger.remove()  # Remove the default logger
 loguru.logger.add("logs/train.log", level="INFO", rotation="10MB", compression="zip")  # Add a file logger
-loguru.logger.add(lambda msg: loguru.logger.debug(msg), level="DEBUG")  # Add a debug logger
 
 
 class Trainer:
-    def __init__(self, model: Module, criterion_segmentation: Module, criterion_inpainting: Module,
-                 optimizer: optim.Optimizer, device, train_loader,
-                 val_loader, model_name, augment: bool = False, num_augment_operations: int = 3,
-                 augment_magnitude: int = 5, lambda_: float = 0.5):
+    def __init__(self, model_: Module, loss: callable, optimizer_: optim.Optimizer, device_, training_loader,
+                 valid_loader, model_name: str, augment: bool = False, num_augment_operations: int = 3,
+                 augment_magnitude: int = 5, lambda_: float = 0.5, criterion_segment: callable = None,
+                 criterion_inpaint: callable = None):
+        self.lambda_ = lambda_
+        self.logger = loguru.logger
         self.lambda_ = lambda_
         self.logger = loguru.logger.bind(trainer=True)
         self.best_model_path = None
         self.best_val_loss = float('inf')
-        self.model = model
-        self.criterion_segmentation = criterion_segmentation
-        self.criterion_inpainting = criterion_inpainting
-        self.optimizer = optimizer
-        self.device = device
-        self.train_loader = train_loader
-        self.val_loader = val_loader
+        self.model = model_
+        self.loss = loss
+        self.segmentation_loss = criterion_segment
+        self.inpainting_loss = criterion_inpaint
+        self.optim = optimizer_
+        self.device = device_
+        self.train_loader = training_loader
+        self.val_loader = valid_loader
         self.model_name = model_name
         self.log_train = ModelPerformanceTracker(model_name)
         self.augment = augment
@@ -54,27 +60,11 @@ class Trainer:
         self.rand_augment = RandAugment(num_operations=num_augment_operations,
                                         magnitude=augment_magnitude) if augment else None
 
-    # def composite_loss(self, outputs: dict, seg_target: torch.Tensor, inpaint_target: torch.Tensor) -> torch.Tensor:
-    #     seg_output = outputs['mask']
-    #     inpaint_output = outputs['inpainted_image']
-    #     segmentation_loss = self.criterion_segmentation(seg_output, seg_target.long())
-    #     inpainting_loss = self.criterion_inpainting(inpaint_output, inpaint_target)
-    #     loss = self.lambda_ * segmentation_loss + (1 - self.lambda_) * inpainting_loss
-    #     return loss
-
-    def composite_loss(self, outputs: dict, seg_target: torch.Tensor, inpaint_target: torch.Tensor) -> torch.Tensor:
-        seg_output, inpaint_output = outputs['mask'], outputs['inpainted_image']
-        # print(f"\nLOSS: seg_output.shape: {seg_output.shape}, inpaint_output.shape: {inpaint_output.shape}")
-        # print(f"\nLOSS: seg_target.shape: {seg_target.shape}, inpaint_target.shape: {inpaint_target.shape}")
-        # print(f"\nLOSS: seg_target: {inpaint_output}, max: {inpaint_output.max()}, min: {inpaint_output.min()}")
-        # print(f"\nLOSS: seg_output: {seg_output}, max: {seg_output.max()}, min: {seg_output.min()}")
-
-        seg_target_class = torch.argmax(seg_target,
-                                        dim=1)  # Get the class index with the maximum value along the channel axis
-        segmentation_loss = self.criterion_segmentation(seg_output, seg_target_class.float())
-        inpainting_loss = self.criterion_inpainting(inpaint_output, inpaint_target)
-        loss = self.lambda_ * segmentation_loss + (1 - self.lambda_) * inpainting_loss
-        return loss
+    def save_best_model(self):
+        date = datetime.datetime.now().strftime('%Y%m%d')
+        model_path = os.path.join("checkpoints", f'best_model_{self.model_name}_{date}.pth')
+        torch.save(self.model.state_dict(), model_path)
+        return model_path
 
     def train(self, num_epochs):
         for epoch in range(num_epochs):
@@ -84,15 +74,15 @@ class Trainer:
                       bar_format='{l_bar}{bar:10}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
                 for batch in pbar:
                     inputs = batch['image'].to(self.device)
-                    self.optimizer.zero_grad()
+                    self.optim.zero_grad()
                     outputs = self.model(inputs)
                     seg_target = batch['mask'].to(self.device)
                     inpaint_target = batch['gt'].to(self.device)
-
-                    loss = self.composite_loss(outputs, seg_target, inpaint_target)
+                    loss = self.loss(outputs, seg_target, inpaint_target, self.segmentation_loss,
+                                     self.inpainting_loss, self.lambda_)
 
                     loss.backward()
-                    self.optimizer.step()
+                    self.optim.step()
                     total_loss += loss.item()
                     pbar.set_postfix({'Loss': f'{total_loss / (pbar.n + 1):.3f}'}, refresh=False)
 
@@ -104,12 +94,13 @@ class Trainer:
                 for batch in self.val_loader:
                     inputs, labels = batch['image'].to(self.device), batch['mask'].to(self.device)
                     outputs = self.model(inputs)
-                    loss = self.criterion_segmentation(outputs['mask'], labels.long())
+                    loss = self.inpainting_loss(outputs['mask'], labels.long())
                     total_val_loss += loss.item()
             val_loss = total_val_loss / len(self.val_loader)
 
-            loguru.logger.info(
-                f'Epoch {epoch + 1}, Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+            self.logger.info(
+                f'Epoch {epoch + 1}, Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}'
+            )
 
             self.log_train.log_metrics(epoch, train_loss, val_loss)
 
@@ -118,19 +109,59 @@ class Trainer:
                 self.best_model_path = self.save_best_model()
                 loguru.logger.info(f'Saving best model to {self.best_model_path}')
 
-    def save_best_model(self):
-        date = datetime.datetime.now().strftime('%Y%m%d')
-        model_path = os.path.join("checkpoints", f'best_model_{self.model_name}_{date}.pth')
-        torch.save(self.model.state_dict(), model_path)
-        return model_path
+
+def composite_loss(
+        outputs: dict,
+        seg_target: torch.Tensor,
+        inpaint_target: torch.Tensor,
+        segmentation_loss: callable,
+        inpaint_loss: callable,
+        lambda_: float
+) -> torch.Tensor:
+    """
+    Computes the composite loss for segmentation and inpainting tasks.
+
+    Args:
+        outputs (dict): Dictionary containing the model's output tensors.
+        seg_target (torch.Tensor): Segmentation target tensor.
+        inpaint_target (torch.Tensor): Inpainting target tensor.
+        segmentation_loss (callable): Segmentation loss function.
+        inpaint_loss (callable): Inpainting loss function.
+        lambda_ (float): Weight for the composite loss.
+
+    Returns:
+        torch.Tensor: Composite loss tensor.
+    """
+    try:
+        seg_output, inpaint_output = outputs['mask'], outputs['inpainted_image']
+        seg_target_class = torch.argmax(seg_target, dim=1)
+        segmentation_loss_val = segmentation_loss(seg_output, seg_target_class.float())
+        inpainting_loss_val = inpaint_loss(inpaint_output, inpaint_target)
+        loss = lambda_ * segmentation_loss_val + (1 - lambda_) * inpainting_loss_val
+        return loss
+    except KeyError as e:
+        loguru.logger.error("Outputs dictionary must contain 'ask' and 'inpainted_image' keys.")
+        raise ValueError("Outputs dictionary must contain 'ask' and 'inpainted_image' keys.") from e
+    except TypeError as e:
+        loguru.logger.error(
+            "Invalid input types. Check the types of outputs, seg_target, inpaint_target, segmentation_loss, "
+            "and inpaint_loss."
+        )
+        raise ValueError(
+            "Invalid input types. Check the types of outputs, seg_target, inpaint_target, segmentation_loss, "
+            "and inpaint_loss."
+        ) from e
+    except RuntimeError as e:
+        loguru.logger.error("Error computing the composite loss. Check the input tensors and loss functions.")
+        raise ValueError("Error computing the composite loss. Check the input tensors and loss functions.") from e
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train the Segmentor')
-    parser.add_argument('--data_dir', type=str, default='data/CamVid', help='Path to dataset dir.')
+    parser = argparse.ArgumentParser(description='Train the InPainTor model.')
+    parser.add_argument('--data_dir', type=str, help='Path to dataset dir.')
     parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs to train')
     parser.add_argument('--batch_size', type=int, default=2, help='Batch size for training')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for the optimizer')
+    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for the optim')
     parser.add_argument('--image_size', type=int, default=512, help='Size of the input images, assumed to be square')
     parser.add_argument('--mask_size', type=int, default=256, help='Size of the masks, assumed to be square')
     parser.add_argument('--augment', action='store_false', help='Apply data augmentation')
@@ -142,29 +173,37 @@ if __name__ == '__main__':
                         help='List of classes IDs for inpainting (default: [0]: person)')
 
     args = parser.parse_args()
-    # print("Parsed arguments:", args.__dict__)
 
     # Create data loaders
     train_dataset = RORDDataset(root_dir=args.data_dir, split='train', image_size=[args.image_size, args.image_size])
+
+    # For DEBUG purposes TODO: Remove this line
+    # train_dataset = RORDDataset(root_dir=args.data_dir, split='debug', image_size=[args.image_size, args.image_size])
     val_dataset = RORDDataset(root_dir=args.data_dir, split='val', image_size=[args.image_size, args.image_size])
     loguru.logger.info(f'Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}')
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
-    # Create model, criterion, and optimizer
+    # Create model, criterion, and optim
     model = InpainTor(num_classes=12, selected_classes=args.selected_classes)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)  # Move the model to the device
-    criterion_segmentation = CrossEntropyLoss()
-    criterion_inpainting = MSELoss()
+    model = model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
 
+    criterion_segmentation = CrossEntropyLoss()
+    criterion_inpainting = MSELoss()
+
     # Create trainer
-    trainer = Trainer(model, criterion_segmentation, criterion_inpainting, optimizer,
-                      device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-                      train_loader=train_loader, val_loader=val_loader, model_name=args.model_name,
+    trainer = Trainer(model_=model,
+                      loss=composite_loss, optimizer_=optimizer,
+                      device_=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+                      training_loader=train_loader, valid_loader=val_loader, model_name=args.model_name,
                       augment=args.augment, num_augment_operations=args.num_augment_operations,
-                      augment_magnitude=args.augment_magnitude, lambda_=args.lambda_)
+                      augment_magnitude=args.augment_magnitude, lambda_=args.lambda_,
+                      criterion_segment=criterion_segmentation, criterion_inpaint=criterion_inpainting)
 
     # Train the model
     trainer.train(args.num_epochs)
+
+    # Plot the training and validation loss
+    Plotter('logs/metrics_{args.model_name}.txt').plot(log_scale=True)

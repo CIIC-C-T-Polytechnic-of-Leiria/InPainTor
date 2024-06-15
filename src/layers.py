@@ -162,7 +162,7 @@ class ClassesToMask(nn.Module):
         max_probs, _ = torch.max(probs, dim=1, keepdim=True)  # Compute the class-wise maximum probability
         mask = (max_probs <= 0.5).float()  # Threshold the maximum probabilities to get the mask and convert to float
         # print(f"mask.shape before unsqueeze: {mask.shape}, mask_probs.shape: {max_probs.shape}")
-        mask = mask.squeeze(1)  # Remove the channel dimension
+        # mask = mask.squeeze(1)  # Remove the channel dimension
         # print(f"mask.shape AFTER: {mask.shape}")
 
         return mask

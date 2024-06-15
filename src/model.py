@@ -6,11 +6,9 @@ from torch.nn import Module
 from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, AttentionBlock, AveragePool2d, ClassesToMask, Conv2D
 
 
-# TODO: PROBLEMA no summary: erro de dimensões. Verificar se o erro está na implementação ou no summary!!
 # TODO: Mecanismo para seleção de classe após a segmentação - In Progress...
-# TODO: Substituir Conv2D por ResidualConv2D?
-# TODO: Rever ligações de AttentionBlock: são estas as ligações que devem ser feitas?
-# TODO: Consultar Livro Generative Models
+# TODO: Consultar Livro Generative Models - In Progress...
+# TODO: Substituir Conv2D por ResidualConv2D? - Todo later...
 
 class SharedEncoder(Module):
     """
@@ -84,13 +82,13 @@ class GenerativeDecoder(Module):
         gen1 = self.conv_transp_block1(enc4)
         gen2 = self.conv_transp_block2(gen1)
         gen_cat1 = cat([attention1, gen2], dim=1)
-        # print(f"attention1.shape: {attention1.shape}, gen2.shape: {gen2.shape}, gen_cat1.shape: {gen_cat1.shape}")
+        print(f"attention1.shape: {attention1.shape}, gen2.shape: {gen2.shape}, gen_cat1.shape: {gen_cat1.shape}")
         gen3 = self.conv_transp_block3(gen_cat1)
         gen_cat2 = cat([attention2, gen3], dim=1)
-        # print(f"gen_cat2.shape: {gen_cat2.shape}")
+        print(f"gen_cat2.shape: {gen_cat2.shape}")
         # gen4 = self.conv_transp_block4(gen_cat2)
         gen4 = self.conv1(gen_cat2)
-        # print(f"gen4.shape: {gen4.shape}, masked_input.shape: {masked_input.shape}")
+        print(f"gen4.shape: {gen4.shape}, masked_input.shape: {masked_input.shape}")
         gen_cat3 = cat([masked_input, gen4], dim=1)
         gen5 = self.conv_transp_block5(gen_cat3)
         # print(f"gen5.shape: {gen5.shape}")
@@ -115,13 +113,6 @@ class InpainTor(Module):
     Returns:
         dict: Dictionary containing the mask and inpainted image.
     """
-
-    # def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
-    #     super(InpainTor, self).__init__()
-    #     self.shared_encoder = SharedEncoder()
-    #     self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes,
-    #                                             selected_classes=selected_classes)
-    #     self.generative_decoder = GenerativeDecoder()
 
     def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
         super().__init__()  # Call the parent class's __init__ method
