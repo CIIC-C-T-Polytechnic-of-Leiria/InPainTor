@@ -74,7 +74,9 @@ class GenerativeDecoder(Module):
 
     def forward(self, input_image, enc4, masked_out, seg2, seg3):
         input_small = self.average_pool(input_image)
-        masked_input = input_small * masked_out.unsqueeze(1)
+        # print(f"\nBEFORE: input_small.shape: {input_small.shape}", f"masked_out.shape: {masked_out.shape}")
+        masked_input = input_small * masked_out
+        # print(f"AFTER: masked_input.shape: {masked_input.shape}")
         attention1 = self.attention_block1(seg2)
         attention2 = self.attention_block2(seg3)
         # print(f"enc4.shape: {enc4.shape}")
@@ -82,13 +84,13 @@ class GenerativeDecoder(Module):
         gen1 = self.conv_transp_block1(enc4)
         gen2 = self.conv_transp_block2(gen1)
         gen_cat1 = cat([attention1, gen2], dim=1)
-        print(f"attention1.shape: {attention1.shape}, gen2.shape: {gen2.shape}, gen_cat1.shape: {gen_cat1.shape}")
+        # print(f"attention1.shape: {attention1.shape}, gen2.shape: {gen2.shape}, gen_cat1.shape: {gen_cat1.shape}")
         gen3 = self.conv_transp_block3(gen_cat1)
         gen_cat2 = cat([attention2, gen3], dim=1)
-        print(f"gen_cat2.shape: {gen_cat2.shape}")
+        # print(f"gen_cat2.shape: {gen_cat2.shape}")
         # gen4 = self.conv_transp_block4(gen_cat2)
         gen4 = self.conv1(gen_cat2)
-        print(f"gen4.shape: {gen4.shape}, masked_input.shape: {masked_input.shape}")
+        # print(f"gen4.shape: {gen4.shape}, masked_input.shape: {masked_input.shape}")
         gen_cat3 = cat([masked_input, gen4], dim=1)
         gen5 = self.conv_transp_block5(gen_cat3)
         # print(f"gen5.shape: {gen5.shape}")

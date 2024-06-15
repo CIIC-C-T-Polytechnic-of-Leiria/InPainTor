@@ -139,4 +139,4 @@ data/CamVid
 .idea
 
 # Ignore the following files
-.pth
+*.pth
