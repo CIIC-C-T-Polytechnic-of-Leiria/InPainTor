@@ -7,10 +7,7 @@ import os
 import sys
 import warnings
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 from loguru import logger
-from matplotlib.ticker import MultipleLocator
 
 warnings.filterwarnings("ignore")
 
@@ -45,56 +42,55 @@ class ModelPerformanceTracker:
             f'Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Best Val Loss: '
             f'{self.best_val_loss:.4f}')
 
-
-class Plotter:
-    """
-    Usage: Plotter('logs/metrics_InpainTor.txt').plot(log_scale=True)
-    """
-
-    def __init__(self, log_file_path: str):
-        self.file_path = log_file_path
-        self.data = self.read_data()
-
-    def read_data(self):
-        data = []
-        with open(self.file_path, 'r') as f:
-            for line in f:
-                epoch, timestamp, train_loss, val_loss, best_val_loss = self.parse_line(line)
-                data.append((epoch, train_loss, val_loss, best_val_loss))
-        return data
-
-    @staticmethod
-    def parse_line(line):
-        parts = line.split(',')
-        epoch = int(parts[0].split()[1])
-        timestamp = parts[1].split()[2]
-        train_loss = float(parts[2].split()[2])
-        val_loss = float(parts[3].split()[2])
-        best_val_loss = float(parts[4].split()[3])
-        return epoch, timestamp, train_loss, val_loss, best_val_loss
-
-    def plot(self, log_scale=False):
-        epochs, train_losses, val_losses, _ = zip(*self.data)
-
-        # Set font family to serif
-        mpl.rcParams['font.family'] = 'serif'
-        mpl.rcParams['font.serif'] = ['cmr10']
-
-        logger.debug('Plotting training and validation loss...')
-
-        plt.grid(True, color='gray', linestyle='--', linewidth=0.5)
-        plt.plot(epochs, train_losses, label='Train Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
-        plt.plot(epochs, val_losses, label='Val Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.title('Training and Validation Loss')
-        plt.legend()
-        if log_scale:
-            plt.yscale('log')
-        y_major_locator = MultipleLocator(0.25)  # Set the major grid interval to 0.1
-        y_minor_locator = MultipleLocator(0.1)  # Set the minor grid interval to 0.01
-        ax = plt.gca()
-        ax.yaxis.set_major_locator(y_major_locator)
-        ax.yaxis.set_minor_locator(y_minor_locator)
-        plt.show()
-        logger.debug('Plotting completed.')
+# class Plotter:
+#     """
+#     Usage: Plotter('logs/metrics_InpainTor.txt').plot(log_scale=True)
+#     """
+#
+#     def __init__(self, log_file_path: str):
+#         self.file_path = log_file_path
+#         self.data = self.read_data()
+#
+#     def read_data(self):
+#         data = []
+#         with open(self.file_path, 'r') as f:
+#             for line in f:
+#                 epoch, timestamp, train_loss, val_loss, best_val_loss = self.parse_line(line)
+#                 data.append((epoch, train_loss, val_loss, best_val_loss))
+#         return data
+#
+#     @staticmethod
+#     def parse_line(line):
+#         parts = line.split(',')
+#         epoch = int(parts[0].split()[1])
+#         timestamp = parts[1].split()[2]
+#         train_loss = float(parts[2].split()[2])
+#         val_loss = float(parts[3].split()[2])
+#         best_val_loss = float(parts[4].split()[3])
+#         return epoch, timestamp, train_loss, val_loss, best_val_loss
+#
+#     def plot(self, log_scale=False):
+#         epochs, train_losses, val_losses, _ = zip(*self.data)
+#
+#         # Set font family to serif
+#         mpl.rcParams['font.family'] = 'serif'
+#         mpl.rcParams['font.serif'] = ['cmr10']
+#
+#         logger.debug('Plotting training and validation loss...')
+#
+#         plt.grid(visible=True, color='gray', linestyle='--', linewidth=0.5)
+#         plt.plot(epochs, train_losses, label='Train Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
+#         plt.plot(epochs, val_losses, label='Val Loss', marker='o', linestyle='-', linewidth=0.5, markersize=2)
+#         plt.xlabel('Epoch')
+#         plt.ylabel('Loss')
+#         plt.title('Training and Validation Loss')
+#         plt.legend()
+#         if log_scale:
+#             plt.yscale('log')
+#         y_major_locator = MultipleLocator(0.25)  # Set the major grid interval to 0.1
+#         y_minor_locator = MultipleLocator(0.1)  # Set the minor grid interval to 0.01
+#         ax = plt.gca()
+#         ax.yaxis.set_major_locator(y_major_locator)
+#         ax.yaxis.set_minor_locator(y_minor_locator)
+#         plt.show()
+#         logger.debug('Plotting completed.')

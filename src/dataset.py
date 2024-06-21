@@ -85,7 +85,7 @@ class RORDDataset(Dataset):
         self.root_dir = root_dir
         self.split = split
         self.image_size = image_size
-        self.input_tranform = transform
+        self.input_transform = transform
         self.image_files = []
         self.gt_files = []
         self.mask_files = []
@@ -113,20 +113,14 @@ class RORDDataset(Dataset):
         img_filenames = []
         for i, file in enumerate(img_files):
             img_filenames.append(os.path.basename(file))
-            if i % 100 == 0:
-                logger.info(f'Loading image file {i + 1}/{len(img_files)}: {os.path.basename(file)}')
 
         gt_filenames = []
         for i, file in enumerate(gt_files):
             gt_filenames.append(os.path.basename(file))
-            if i % 100 == 0:
-                logger.info(f'Loading ground truth file {i + 1}/{len(gt_files)}: {os.path.basename(file)}')
 
         mask_filenames = []
         for i, file in enumerate(mask_files):
             mask_filenames.append(os.path.basename(file))
-            if i % 100 == 0:
-                logger.info(f'Loading mask file {i + 1}/{len(mask_files)}: {os.path.basename(file)}')
 
         if not img_filenames:
             logger.info("Image directory is empty")
@@ -148,6 +142,11 @@ class RORDDataset(Dataset):
             self.gt_files.append(os.path.join(gt_dir, file + '.jpg'))
             self.mask_files.append(os.path.join(mask_dir, file + '.png'))
 
+        # order the files alphabetically
+        self.image_files.sort()
+        self.gt_files.sort()
+        self.mask_files.sort()
+
         if not self.image_files or not self.gt_files or not self.mask_files:
             raise ValueError("One or more of the lists is empty")
 
@@ -155,6 +154,16 @@ class RORDDataset(Dataset):
         image_file = self.image_files[index]
         gt_file = self.gt_files[index]
         mask_file = self.mask_files[index]
+
+        image_name = os.path.splitext(os.path.basename(image_file))[0]
+        gt_name = os.path.splitext(os.path.basename(gt_file))[0]
+        mask_name = os.path.splitext(os.path.basename(mask_file))[0]
+
+        if not (image_name == gt_name == mask_name):
+            print(f"Image file: {os.path.basename(image_file)}")
+            print(f"GT file: {os.path.basename(gt_file)}")
+            print(f"Mask file: {os.path.basename(mask_file)}")
+            raise ValueError("File names do not match")
 
         image = datasets.folder.default_loader(str(image_file))
         gt = datasets.folder.default_loader(str(gt_file))
@@ -178,9 +187,9 @@ class RORDDataset(Dataset):
             transforms.Lambda(lambda x: (x > 0.5).float())
         ])(mask)
 
-        if self.input_tranform:
-            image = self.input_tranform(image)
-            gt = self.input_tranform(gt)
+        if self.input_transform:
+            image = self.input_transform(image)
+            gt = self.input_transform(gt)
 
         return {'image': image, 'gt': gt, 'mask': mask}
 
