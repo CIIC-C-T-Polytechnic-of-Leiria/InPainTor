@@ -1,5 +1,16 @@
 # InPainTor 🎨 (Work in Progress...)
 
+---
+<center>
+    <a href="https://ciic.ipleiria.pt/">
+        <img src="assets/CIIC_FCT_logo.png" width="750px" alt="CIIC CT Logo"/>
+    </a>
+</center>
+
+---
+
+## Description
+
 The **InPainTor** model has the capability to recognize objects and perform inpainting on specific objects in real-time.
 
 This enables the model to selectively remove and fill in missing or unwanted objects in images, while preserving the
@@ -68,3 +79,17 @@ InpaintTor/
 └── README.md                 📖: Project README file
 
 ```
+
+Acknowledgements
+----------------
+
+This work is funded by FCT - Fundação para a Ciência e a Tecnologia, I.P., through project with reference
+2022.09235.PTDC.
+
+
+
+License
+-------
+
+This project is licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
+
