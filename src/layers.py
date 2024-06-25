@@ -42,7 +42,8 @@ class SepConvBlock(nn.Module):
                  stride: int = 1,
                  pool_kernel_size: int = 2,
                  kernel_size: int = 3,
-                 return_skip: bool = False):
+                 return_skip: bool = False
+                 ):
 
         super(SepConvBlock, self).__init__()
         self.return_skip = return_skip

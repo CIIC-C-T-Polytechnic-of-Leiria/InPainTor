@@ -1,4 +1,4 @@
-# InPainTor 🎨
+# InPainTor 🎨 (Work in Progress...)
 
 The **InPainTor** model has the capability to recognize objects and perform inpainting on specific objects in real-time.
 
