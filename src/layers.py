@@ -2,7 +2,6 @@ from typing import List
 
 import torch
 import torch.nn as nn
-# from torchvision.transforms import functional as F
 import torch.nn.functional as F
 
 
@@ -103,23 +102,6 @@ class SepConvTranspBlock(nn.Module):
         return x
 
 
-# class AttentionBlock(nn.Module):
-#     def __init__(self, in_channels: int, out_channels: int):
-#         super(AttentionBlock, self).__init__()
-#         self.query_conv = Conv1x1(in_channels, out_channels, stride=1, bias=True, activation=None)
-#         self.key_conv = Conv1x1(in_channels, out_channels, stride=1, bias=True, activation=None)
-#         self.value_conv = Conv1x1(in_channels, out_channels, stride=1, bias=True, activation=None)
-#         self.gamma = nn.Parameter(torch.zeros(1))
-#
-#     def forward(self, seg_features, x):
-#         query = self.query_conv(seg_features)
-#         key = self.key_conv(seg_features)
-#         value = self.value_conv(x)
-#         attention_weights = torch.matmul(query, key.transpose(-1, -2)) / torch.sqrt(key.shape[-1])
-#         attention_weights = F.softmax(attention_weights, dim=-1)
-#         output = self.gamma * torch.matmul(attention_weights, value) + x
-#         return output
-
 class AttentionBlock(nn.Module):
     def __init__(self, in_channels: int, attention_dim: int):
         super(AttentionBlock, self).__init__()
@@ -152,6 +134,7 @@ class ClassesToMask(nn.Module):
         """
         x: NxCxHxW tensor, where N is the batch size, C is the number of classes,
             H and W are the height and width of the segmentation maps.
+
         Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
                  and 1 indicates the absence of an object.
         """
@@ -161,10 +144,6 @@ class ClassesToMask(nn.Module):
         # print(f"probs.shape: {probs.shape}")
         max_probs, _ = torch.max(probs, dim=1, keepdim=True)  # Compute the class-wise maximum probability
         mask = (max_probs <= 0.5).float()  # Threshold the maximum probabilities to get the mask and convert to float
-        # print(f"mask.shape before unsqueeze: {mask.shape}, mask_probs.shape: {max_probs.shape}")
-        # mask = mask.squeeze(1)  # Remove the channel dimension
-        # print(f"mask.shape AFTER: {mask.shape}")
-
         return mask
 
 

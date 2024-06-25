@@ -19,25 +19,30 @@ import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
 import torchvision.transforms as transforms
-from torch.nn import Module, L1Loss, CrossEntropyLoss
+from torch.nn import Module, L1Loss
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import dataset
+import losses
 # import logger
 import model
 
 # Reload the modules in case they have been modified
 importlib.reload(dataset)
 importlib.reload(model)
+importlib.reload(losses)
 # importlib.reload(logger)
 
 from data_augmentation import RandAugment
 from dataset import RORDDataset
 from model import InpainTor
+from losses import SegmentationLoss
+from vizualizations import plot_training_log
 
 loguru.logger.remove()  # Remove the default logger
-loguru.logger.add(f"logs/train{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')}.log", rotation="10 MB")
+log_file = f"logs/train{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')}.log"
+loguru.logger.add(log_file, rotation="10 MB")
 
 
 class Trainer:
@@ -86,7 +91,8 @@ class Trainer:
         for epoch in range(num_epochs):
             self.model.train()
             total_loss = 0
-            with tqdm(self.train_loader, desc=f'Epoch {epoch + 1:<2} - Training', unit_scale=True) as pbar:
+            with tqdm(self.train_loader, desc=f'Epoch {epoch + 1:<2} - Training', unit_scale=True,
+                      colour='green', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
                 for batch in pbar:
                     # inputs, seg_gt, inpaint_gt = [x.to(self.device) for x in batch.values()]
                     inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
@@ -97,14 +103,15 @@ class Trainer:
                     loss.backward()
                     self.optim.step()
                     total_loss += loss.item()
-                    pbar.set_postfix({'Loss': f'{total_loss / (pbar.n + 1):.6f}'})
+                    pbar.set_description(f'Epoch {epoch + 1:<2} - Training, Loss: {total_loss / (pbar.n + 1):.6f}')
 
             train_loss = total_loss / len(self.train_loader)
             self.model.eval()
 
             # Validation loop
             total_val_loss = 0
-            with tqdm(self.val_loader, desc=f'Epoch {epoch + 1:<2} - Validation') as pbar:
+            with tqdm(self.val_loader, desc=f'Epoch {epoch + 1:<2} - Validation', unit_scale=True,
+                      colour='blue', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
                 for batch in pbar:
                     # inputs, seg_target, inpaint_target = [x.to(self.device) for x in batch.values()]
                     inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
@@ -112,7 +119,8 @@ class Trainer:
                     args_loss = (output, seg_gt, inpaint_gt, self.seg_loss, self.inpaint_loss, self.lambda_)
                     loss = composite_loss(*args_loss)
                     total_val_loss += loss.item()
-                    pbar.set_postfix({'Val Loss': f'{total_val_loss / (pbar.n + 1):10.6f}'})
+                    pbar.set_description(
+                        f'Epoch {epoch + 1:<2} - Validation, Val Loss: {total_val_loss / (pbar.n + 1):.6f}')
 
             val_loss = total_val_loss / len(self.val_loader)
 
@@ -174,19 +182,19 @@ class Trainer:
         output_tensor = output_tensor
 
         # Create a grid of images
-        fig, axs = plt.subplots(2, 3, figsize=(15, 10))
+        fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 10))
 
         # Identify if some tensor is not in th [0, 1] range the name only of the tensor anf the actual range
-        for tensor_name, tensor in zip(['input_tensor', 'inpaint_target_tensor', 'output_tensor'],
-                                       [input_tensor, inpaint_target_tensor, output_tensor]):
-            if tensor.min() < 0 or tensor.max() > 1:
-                print(f"{tensor_name} has values outside the [0, 1] range. "
-                      f"Min: {tensor.min()}, Max: {tensor.max()}")
+        # for tensor_name, tensor in zip(['input_tensor', 'inpaint_target_tensor', 'output_tensor'],
+        #                                [input_tensor, inpaint_target_tensor, output_tensor]):
+        #     if tensor.min() < 0 or tensor.max() > 1:
+        #         print(f"{tensor_name} has values outside the [0, 1] range. "
+        #               f"Min: {tensor.min()}, Max: {tensor.max()}")
 
         # Guarantee that the values are in the [0, 1] range
-        input_tensor = torch.clamp(input_tensor, 0, 1)
-        inpaint_target_tensor = torch.clamp(inpaint_target_tensor, 0, 1)
-        output_tensor = torch.clamp(output_tensor, 0, 1)
+        input_tensor = torch.clamp(input_tensor, min=0, max=1)
+        inpaint_target_tensor = torch.clamp(inpaint_target_tensor, min=0, max=1)
+        output_tensor = torch.clamp(output_tensor, min=0, max=1)
 
         # Add images to subplots
         axs[0, 0].imshow(input_tensor)
@@ -210,62 +218,70 @@ class Trainer:
         plt.close(fig)
 
 
-def composite_loss(
-        outputs: dict,
-        seg_target: torch.Tensor,
-        inpaint_target: torch.Tensor,
-        segmentation_loss: callable,
-        inpaint_loss: callable,
-        lambda_: float
-) -> torch.Tensor:
-    """
-    Computes the composite loss for segmentation and inpainting tasks.
+def composite_loss(output, seg_gt, inpaint_gt, seg_loss, inpaint_loss, lambda_):
+    seg_output = output['mask']
+    inpaint_output = output['inpainted_image']
+    # print(f"seg_output.shape: {seg_output.shape}, seg_gt.shape: {seg_gt.shape}")
+    seg_loss_value = seg_loss(seg_output, seg_gt)
+    inpaint_loss_value = inpaint_loss(inpaint_output, inpaint_gt)
+    return lambda_ * seg_loss_value + (1 - lambda_) * inpaint_loss_value
 
-    Args:
-        outputs (dict): Dictionary containing the model's output tensors.
-        seg_target (torch.Tensor): Segmentation target tensor.
-        inpaint_target (torch.Tensor): Inpainting target tensor.
-        segmentation_loss (callable): Segmentation loss function.
-        inpaint_loss (callable): Inpainting loss function.
-        lambda_ (float): Weight for the composite loss.
 
-    Returns:
-        torch.Tensor: Composite loss tensor.
-    """
-    try:
-        seg_output, inpaint_output = outputs['mask'], outputs['inpainted_image']
-        # TODO: Depois corrigir a linha em baixo para funcionar com batch_size > 1
-        seg_output = seg_output
-        # seg_target_class = torch.argmax(seg_target, dim=0)
-        seg_target_class = seg_target
-        # print(
-        #     f"\nseg_target_class.shape: {seg_target_class.shape}, max: {seg_target_class.max()}, min: {seg_target_class.min()}")
-        # print(f"seg_output.shape: {seg_output.shape}, max: {seg_output.max()}, min: {seg_output.min()}")
-        # segmentation_loss_val = segmentation_loss(seg_output, seg_target_class.float())
-        segmentation_loss_val = segmentation_loss(seg_output.float(), seg_target_class.float())
-        inpainting_loss_val = inpaint_loss(inpaint_output, inpaint_target)
-        loss = lambda_ * segmentation_loss_val + (1 - lambda_) * inpainting_loss_val
-        # loss = segmentation_loss_val
-
-        # seg_loss_weight = 1 / (1 + segmentation_loss_val)
-        # inpaint_loss_weight = 1 / (1 + inpainting_loss_val)
-        # loss = seg_loss_weight * segmentation_loss_val + inpaint_loss_weight * inpainting_loss_val
-        return loss
-    except KeyError as e:
-        loguru.logger.error("Outputs dictionary must contain 'ask' and 'inpainted_image' keys.")
-        raise ValueError("Outputs dictionary must contain 'ask' and 'inpainted_image' keys.") from e
-    except TypeError as e:
-        loguru.logger.error(
-            "Invalid input types. Check the types of outputs, seg_target, inpaint_target, segmentation_loss, "
-            "and inpaint_loss."
-        )
-        raise ValueError(
-            "Invalid input types. Check the types of outputs, seg_target, inpaint_target, segmentation_loss, "
-            "and inpaint_loss."
-        ) from e
-    except RuntimeError as e:
-        loguru.logger.error("Error computing the composite loss. Check the input tensors and loss functions.")
-        raise ValueError("Error computing the composite loss. Check the input tensors and loss functions.") from e
+# def composite_loss(
+#         outputs: dict,
+#         seg_target: torch.Tensor,
+#         inpaint_target: torch.Tensor,
+#         segmentation_loss: callable,
+#         inpaint_loss: callable,
+#         lambda_: float
+# ) -> torch.Tensor:
+#     """
+#     Computes the composite loss for segmentation and inpainting tasks.
+#
+#     Args:
+#         outputs (dict): Dictionary containing the model's output tensors.
+#         seg_target (torch.Tensor): Segmentation target tensor.
+#         inpaint_target (torch.Tensor): Inpainting target tensor.
+#         segmentation_loss (callable): Segmentation loss function.
+#         inpaint_loss (callable): Inpainting loss function.
+#         lambda_ (float): Weight for the composite loss.
+#
+#     Returns:
+#         torch.Tensor: Composite loss tensor.
+#     """
+#     try:
+#         seg_output, inpaint_output = outputs['mask'], outputs['inpainted_image']
+#         # TODO: Depois corrigir a linha em baixo para funcionar com batch_size > 1
+#         seg_output = seg_output
+#         # seg_target_class = torch.argmax(seg_target, dim=0)
+#         seg_target_class = seg_target
+#
+#         print(f"seg_output.shape: {seg_output.shape}, seg_target_class.shape: {seg_target_class.shape}")
+#         print(
+#             f"seg_target_class max: {seg_target_class.max()}, seg_target_class min: {seg_target_class.min()}, mean: {seg_target_class.mean()}")
+#
+#         print(f"seg_output max: {seg_output.max()}, seg_output min: {seg_output.min()}, mean: {seg_output.mean()}")
+#
+#         segmentation_loss_val = segmentation_loss(seg_output.float(), seg_target_class.float())
+#         print(f"segmentation_loss_val: {segmentation_loss_val}")
+#         inpainting_loss_val = inpaint_loss(inpaint_output, inpaint_target)
+#         loss = lambda_ * segmentation_loss_val + (1 - lambda_) * inpainting_loss_val
+#         return loss
+#     except KeyError as e:
+#         loguru.logger.error("Outputs dictionary must contain 'ask' and 'inpainted_image' keys.")
+#         raise ValueError("Outputs dictionary must contain 'ask' and 'inpainted_image' keys.") from e
+#     except TypeError as e:
+#         loguru.logger.error(
+#             "Invalid input types. Check the types of outputs, seg_target, inpaint_target, segmentation_loss, "
+#             "and inpaint_loss."
+#         )
+#         raise ValueError(
+#             "Invalid input types. Check the types of outputs, seg_target, inpaint_target, segmentation_loss, "
+#             "and inpaint_loss."
+#         ) from e
+#     except RuntimeError as e:
+#         loguru.logger.error("Error computing the composite loss. Check the input tensors and loss functions.")
+#         raise ValueError("Error computing the composite loss. Check the input tensors and loss functions.") from e
 
 
 if __name__ == '__main__':
@@ -304,7 +320,7 @@ if __name__ == '__main__':
     model = model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
 
-    criterion_segmentation = CrossEntropyLoss()  # BCELoss() # IoULoss() #DiceLoss()
+    criterion_segmentation = SegmentationLoss(loss_type='focal')  # BCELoss() # IoULoss() #DiceLoss()
     criterion_inpainting = L1Loss()  # MSELoss()  # BCELoss()
 
     # Create trainer
@@ -320,4 +336,4 @@ if __name__ == '__main__':
     trainer.train(args.num_epochs)
 
     # Plot the training and validation loss
-    #  Plotter('logs/metrics_{args.model_name}.txt').plot(log_scale=True)
+    plot_training_log(file_path=log_file, log_scale=True)

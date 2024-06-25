@@ -3,7 +3,8 @@ from typing import List
 from torch import cat
 from torch.nn import Module
 
-from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, AttentionBlock, AveragePool2d, ClassesToMask, Conv2D
+from layers import AttentionBlock, AveragePool2d, ClassesToMask
+from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D
 
 
 # TODO: Mecanismo para seleção de classe após a segmentação - In Progress...
@@ -34,7 +35,7 @@ class SharedEncoder(Module):
 
 
 class SegmentorDecoder(Module):
-    def __init__(self, in_channels: int, num_classes: int = 40, selected_classes: List[int] = [0],
+    def __init__(self, in_channels: int, num_classes: int, selected_classes: List[int] = [0],
                  base_chs: int = 16):
         super(SegmentorDecoder, self).__init__()
         self.conv_transp_block1 = SepConvTranspBlock(in_channels, out_channels=base_chs * 16)
@@ -52,6 +53,7 @@ class SegmentorDecoder(Module):
         seg3 = self.conv_transp_block3(seg_cat2)
         seg_out = self.conv1x1(seg3)
         masked_out = self.class_selector(seg_out)
+
         return masked_out, seg2, seg3
 
 
