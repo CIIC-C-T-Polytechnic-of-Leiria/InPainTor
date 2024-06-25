@@ -138,6 +138,7 @@ cython_debug/
 data/CamVid
 .idea
 logs/images/backup_old
+outputs/CamVid
 
 # Ignore the following files
 *.pth
