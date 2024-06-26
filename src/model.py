@@ -3,7 +3,7 @@ from typing import List
 from torch import cat
 from torch.nn import Module
 
-from layers import AttentionBlock, AveragePool2d, ClassesToMask
+from layers import AttentionBlock, AveragePool2d, LogSoftmax
 from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D
 
 
@@ -35,14 +35,17 @@ class SharedEncoder(Module):
 
 
 class SegmentorDecoder(Module):
-    def __init__(self, in_channels: int, num_classes: int, selected_classes: List[int] = [0],
-                 base_chs: int = 16):
+    def __init__(self, in_channels: int, num_classes: int, base_chs: int = 16):
         super(SegmentorDecoder, self).__init__()
         self.conv_transp_block1 = SepConvTranspBlock(in_channels, out_channels=base_chs * 16)
         self.conv_transp_block2 = SepConvTranspBlock(in_channels=base_chs * 24, out_channels=base_chs * 8)
         self.conv_transp_block3 = SepConvTranspBlock(in_channels=base_chs * 12, out_channels=base_chs * 4)
         self.conv1x1 = Conv1x1(in_channels=base_chs * 4, out_channels=num_classes, stride=1, activation=None)
-        self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes)
+
+        self.log_softmax = LogSoftmax(dim=1)  # LogSoftmax for segmentation output, use NLLLoss for loss calculation
+        # In
+
+        # self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes)
 
     def forward(self, enc4, enc3, enc2):
         seg1 = self.conv_transp_block1(enc4)
@@ -52,7 +55,10 @@ class SegmentorDecoder(Module):
         seg_cat2 = cat([seg2, enc2], dim=1)
         seg3 = self.conv_transp_block3(seg_cat2)
         seg_out = self.conv1x1(seg3)
-        masked_out = self.class_selector(seg_out)
+        masked_out = self.log_softmax(seg_out)
+        # masked_out = self.class_selector(seg_out)
+        print(f"\nSeg_out shape: {seg_out.shape}, Masked_out shape: {masked_out.shape}")
+        print(f"\nSeg_out: {seg_out}, \nMasked_out: {masked_out}")
 
         return masked_out, seg2, seg3
 
@@ -119,8 +125,8 @@ class InpainTor(Module):
     def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
         super().__init__()  # Call the parent class's __init__ method
         self.shared_encoder = SharedEncoder()
-        self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes,
-                                                selected_classes=selected_classes)
+        self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes)
+        # selected_classes=selected_classes)
         self.generative_decoder = GenerativeDecoder()
 
     def forward(self, x):

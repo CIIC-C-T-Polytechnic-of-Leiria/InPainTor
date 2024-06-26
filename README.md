@@ -45,7 +45,7 @@ Source: https://github.com/owenzlz/PAL4Inpaint/tree/main
 
 ## Repo structure
 
-```bash
+```plaintext
 InpaintTor/ 
 ├── assets/                   📂: Repo assets
 │   └── img.png

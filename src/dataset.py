@@ -3,6 +3,7 @@ import os
 from glob import glob
 
 import numpy as np
+import torch
 import torchvision.transforms as transforms
 from loguru import logger
 from torch.utils.data import Dataset
@@ -93,7 +94,7 @@ class RORDDataset(Dataset):
         logger.info('Loading image, ground truth, and mask files...')
         img_dir = os.path.join(root_dir, split, 'img')
         gt_dir = os.path.join(root_dir, split, 'gt')
-        mask_dir = os.path.join(root_dir, split, 'mask')
+        mask_dir = os.path.join(root_dir, split, 'multiclass_mask')
 
         logger.info(
             f'Loading image files from: {img_dir}, ground truth files from: {gt_dir}, and mask files from: {mask_dir}')
@@ -142,7 +143,7 @@ class RORDDataset(Dataset):
             self.gt_files.append(os.path.join(gt_dir, file + '.jpg'))
             self.mask_files.append(os.path.join(mask_dir, file + '.png'))
 
-        # order the files alphabetically
+        # Sort the files
         self.image_files.sort()
         self.gt_files.sort()
         self.mask_files.sort()
@@ -169,23 +170,36 @@ class RORDDataset(Dataset):
         gt = datasets.folder.default_loader(str(gt_file))
         mask = datasets.folder.default_loader(str(mask_file))
 
-        # image = F.resize(image, self.image_size)
-        # gt = F.resize(gt, self.image_size)
-        # mask = F.resize(mask, self.image_size)
-        #
-        # image = ToTensor()(image)
-        # gt = ToTensor()(gt)
-        # mask = ToTensor()(mask)
-
         image, gt = [transforms.Compose([
             transforms.Resize(self.image_size),
             transforms.ToTensor()])(img) for img in [image, gt]]
+
+        # mask = transforms.Compose([
+        #     transforms.Resize([size // 2 for size in self.image_size]),
+        #     transforms.Grayscale(),
+        #     transforms.ToTensor(),
+        #     transforms.Lambda(lambda x: (x > 0.5).float())
+        # ])(mask)
+
+        # mask = transforms.Compose([
+        #     transforms.Resize([size // 2 for size in self.image_size]),
+        #     transforms.Grayscale(),
+        # ])(mask)
+
         mask = transforms.Compose([
-            transforms.Resize([size // 2 for size in self.image_size]),
+            transforms.Resize([size // 2 for size in self.image_size],
+                              interpolation=transforms.InterpolationMode.NEAREST),
             transforms.Grayscale(),
-            transforms.ToTensor(),
-            transforms.Lambda(lambda x: (x > 0.5).float())
+            transforms.PILToTensor(),
+            transforms.Lambda(lambda x: x.squeeze().long())
         ])(mask)
+
+        # Ensure values are in the range [0, 79]
+        mask = torch.clamp(mask, 0, 79)
+
+        assert mask.dtype == torch.long, f"Mask dtype is {mask.dtype}, expected torch.long"
+        assert mask.min() >= 0 and mask.max() <= 79, f"Mask values out of range: min={mask.min()}, max={mask.max()}"
+        assert mask.dim() == 2, f"Mask has {mask.dim()} dimensions, expected 2"
 
         if self.input_transform:
             image = self.input_transform(image)

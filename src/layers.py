@@ -14,21 +14,52 @@ def calculate_same_padding(input_size: int, kernel_size: int, stride: int):
     return padding
 
 
+# class Conv1x1(nn.Module):
+#     def __init__(self, in_channels, out_channels, stride=1, bias=True, activation=None):
+#         super(Conv1x1, self).__init__()
+#
+#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=bias)
+#
+#         if activation == "gelu":
+#             self.activation = nn.GELU()
+#         elif activation:
+#             self.activation = nn.ReLU(activation)
+#         else:
+#             self.activation = None
+#
+#     def forward(self, x):
+#         x = self.conv(x)
+#         if self.activation is not None:
+#             x = self.activation(x)
+#         return x
+
+class LogSoftmax(nn.Module):
+    def __init__(self, dim=1):
+        super(LogSoftmax, self).__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        return F.log_softmax(x, dim=self.dim)
+
+
 class Conv1x1(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1, bias=True, activation=None):
+    def __init__(self, in_channels, out_channels, stride=1, bias=False, activation=None):
         super(Conv1x1, self).__init__()
-
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=bias)
-
+        self.bn = nn.BatchNorm2d(out_channels)
         if activation == "gelu":
             self.activation = nn.GELU()
         elif activation:
-            self.activation = nn.ReLU(activation)
+            self.activation = nn.ReLU(inplace=True)
         else:
             self.activation = None
 
+        # He initialization
+        nn.init.kaiming_normal_(self.conv.weight, mode='fan_out', nonlinearity='relu')
+
     def forward(self, x):
         x = self.conv(x)
+        x = self.bn(x)
         if self.activation is not None:
             x = self.activation(x)
         return x
@@ -57,6 +88,14 @@ class SepConvBlock(nn.Module):
         self.activation = nn.GELU()
         self.bn = nn.BatchNorm2d(out_channels)  # TODO: try with LayerNorm
         self.pool = nn.MaxPool2d(pool_kernel_size, stride=2)
+
+        # He Initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.sep_conv(x)
@@ -91,6 +130,14 @@ class SepConvTranspBlock(nn.Module):
         self.activation = nn.GELU()
         self.bn = nn.BatchNorm2d(out_channels)  # TODO: try with LayerNorm
 
+        # He Initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # print(f"SepConvTransposeBlock, Before Conv: {x.shape}")
         x = self.sep_transp_conv(x)
@@ -109,12 +156,20 @@ class AttentionBlock(nn.Module):
         self.query_conv = nn.Conv2d(in_channels, out_channels=attention_dim, kernel_size=1)
         self.key_conv = nn.Conv2d(in_channels, out_channels=attention_dim, kernel_size=1)
         self.value_conv = nn.Conv2d(in_channels, out_channels=in_channels, kernel_size=1)
+        self.bn_query = nn.BatchNorm2d(attention_dim)
+        self.bn_key = nn.BatchNorm2d(attention_dim)
+        self.bn_value = nn.BatchNorm2d(in_channels)
         self.gamma = nn.Parameter(torch.zeros(1))
 
+        # He initialization
+        nn.init.kaiming_normal_(self.query_conv.weight, mode='fan_out', nonlinearity='leaky_relu')
+        nn.init.kaiming_normal_(self.key_conv.weight, mode='fan_out', nonlinearity='leaky_relu')
+        nn.init.kaiming_normal_(self.value_conv.weight, mode='fan_out', nonlinearity='leaky_relu')
+
     def forward(self, segmentation_features) -> torch.Tensor:
-        query = self.query_conv(segmentation_features)
-        key = self.key_conv(segmentation_features)
-        value = self.value_conv(segmentation_features)
+        query = self.bn_query(self.query_conv(segmentation_features))
+        key = self.bn_key(self.key_conv(segmentation_features))
+        value = self.bn_value(self.value_conv(segmentation_features))
         # Dot product attention
         attention_weights = torch.matmul(query, key.transpose(-1, -2)) / torch.sqrt(torch.tensor(key.shape[-1]).float())
         # print(f"attention_weights data type: {attention_weights.dtype}")
@@ -126,10 +181,11 @@ class AttentionBlock(nn.Module):
 
 
 class ClassesToMask(nn.Module):
-    def __init__(self, num_classes: int, class_ids: List[int]):
+    def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.5):
         super(ClassesToMask, self).__init__()
         self.num_classes = num_classes
         self.class_ids = class_ids
+        self.threshold = threshold
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -139,12 +195,10 @@ class ClassesToMask(nn.Module):
         Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
                  and 1 indicates the absence of an object.
         """
-        x = x[:, self.class_ids, :, :]  # Select the channels corresponding to the specified class IDs
-        # print(f"x.shape.{x.shape}, self.class_ids: {self.class_ids}")
-        probs = torch.sigmoid(x)  # Sigmoid activation to convert the output to probabilities
-        # print(f"probs.shape: {probs.shape}")
-        max_probs, _ = torch.max(probs, dim=1, keepdim=True)  # Compute the class-wise maximum probability
-        mask = (max_probs <= 0.5).float()  # Threshold the maximum probabilities to get the mask and convert to float
+        x = x[:, self.class_ids, :, :]
+        probs = torch.sigmoid(x)
+        max_probs, _ = torch.max(probs, dim=1, keepdim=True)
+        mask = (max_probs <= self.threshold).float()
         return mask
 
 
@@ -165,6 +219,11 @@ class Conv2D(nn.Module):
             padding = (kernel_size - 1) // 2
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias)
         self.activation = activation
+
+        # He Initialization
+        nn.init.kaiming_normal_(self.conv.weight, mode='fan_out', nonlinearity='leaky_relu')
+        if bias:
+            nn.init.constant_(self.conv.bias, 0)
 
     def forward(self, x):
         x = self.conv(x)
