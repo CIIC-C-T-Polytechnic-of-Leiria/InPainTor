@@ -8,3 +8,5 @@ dependencies:
   - torchvision
   - pytorch
   - tqdm
+vars:
+  REPO_DATA_DIR: "/home/tiagociiic/Projects/InpainTor"

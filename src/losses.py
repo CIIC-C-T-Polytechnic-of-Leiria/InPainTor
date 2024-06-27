@@ -115,6 +115,28 @@ class CompoundSegmentationLoss(nn.Module):
         dy_loss = F.mse_loss(pred_dy, target_dy)
         return (dx_loss + dy_loss) / 2.0
 
+
+class CompositeLoss:
+    """
+    Composite Loss: Combines segmentation and inpainting losses.
+
+    Usage:
+        criterion = CompositeLoss(seg_loss, inpaint_loss, lambda_)
+        loss = criterion(output, seg_gt, inpaint_gt)
+    """
+
+    def __init__(self, seg_loss: callable, inpaint_loss: callable, lambda_: float):
+        self.seg_loss = seg_loss
+        self.inpaint_loss = inpaint_loss
+        self.lambda_ = lambda_
+
+    def __call__(self, output: dict, seg_gt: torch.Tensor, inpaint_gt: torch.Tensor) -> torch.Tensor:
+        seg_output = output['mask']
+        inpaint_output = output['inpainted_image']
+        seg_loss_value = self.seg_loss(seg_output, seg_gt)
+        inpaint_loss_value = self.inpaint_loss(inpaint_output, inpaint_gt)
+        return self.lambda_ * seg_loss_value + (1 - self.lambda_) * inpaint_loss_value
+
 # def composite_loss(
 #         outputs: dict,
 #         seg_target: torch.Tensor,

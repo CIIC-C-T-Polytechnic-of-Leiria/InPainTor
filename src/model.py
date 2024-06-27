@@ -3,7 +3,7 @@ from typing import List
 from torch import cat
 from torch.nn import Module
 
-from layers import AttentionBlock, AveragePool2d, LogSoftmax
+from layers import AttentionBlock, AveragePool2d, LogSoftmax, ClassesToMask
 from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D
 
 
@@ -43,8 +43,7 @@ class SegmentorDecoder(Module):
         self.conv1x1 = Conv1x1(in_channels=base_chs * 4, out_channels=num_classes, stride=1, activation=None)
 
         self.log_softmax = LogSoftmax(dim=1)  # LogSoftmax for segmentation output, use NLLLoss for loss calculation
-        # In
-
+        # self.softmax = Softmax(dim=1)  # Softmax for segmentation output, use CrossEntropyLoss for loss calculation
         # self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes)
 
     def forward(self, enc4, enc3, enc2):
@@ -55,17 +54,18 @@ class SegmentorDecoder(Module):
         seg_cat2 = cat([seg2, enc2], dim=1)
         seg3 = self.conv_transp_block3(seg_cat2)
         seg_out = self.conv1x1(seg3)
-        masked_out = self.log_softmax(seg_out)
-        # masked_out = self.class_selector(seg_out)
-        print(f"\nSeg_out shape: {seg_out.shape}, Masked_out shape: {masked_out.shape}")
-        print(f"\nSeg_out: {seg_out}, \nMasked_out: {masked_out}")
+        classes_out = self.log_softmax(seg_out)
+        # classes_out = self.class_selector(seg_out)
+        # print(f"\nSeg_out shape: {seg_out.shape}, Masked_out shape: {classes_out.shape}")
+        # print(f"\nSeg_out: {seg_out}, \nMasked_out: {classes_out}")
 
-        return masked_out, seg2, seg3
+        return classes_out, seg2, seg3
 
 
 class GenerativeDecoder(Module):
-    def __init__(self, base_chs: int = 16):
+    def __init__(self, base_chs: int = 16, num_classes: int = 80, selected_classes: List[int] = [1]):
         super(GenerativeDecoder, self).__init__()
+        self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes)
         self.conv_transp_block1 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 16)
         self.conv_transp_block2 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 8)
         self.conv_transp_block3 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 8)
@@ -73,13 +73,14 @@ class GenerativeDecoder(Module):
         self.conv_transp_block5 = SepConvTranspBlock(in_channels=(base_chs * 4) + 3, out_channels=64)
         self.conv2 = Conv2D(in_channels=base_chs * 4, out_channels=base_chs, stride=1, same_dims=True)
         self.conv3 = Conv2D(in_channels=base_chs, out_channels=base_chs, stride=1, same_dims=True)
-        self.conv1x1 = Conv1x1(in_channels=base_chs, out_channels=3, stride=1, activation=None)
+        self.conv1x1 = Conv1x1(in_channels=base_chs, out_channels=3, stride=1, activation="sigmoid")
         self.average_pool = AveragePool2d(kernel_size=2, stride=2)
         self.attention_block1 = AttentionBlock(in_channels=base_chs * 8, attention_dim=base_chs * 8)
         self.attention_block2 = AttentionBlock(in_channels=base_chs * 4, attention_dim=base_chs * 4)
 
-    def forward(self, input_image, enc4, masked_out, seg2, seg3):
+    def forward(self, input_image, enc4, classes_out, seg2, seg3):
         input_small = self.average_pool(input_image)
+        masked_out = self.class_selector(classes_out)
         # print(f"\nBEFORE: input_small.shape: {input_small.shape}", f"masked_out.shape: {masked_out.shape}")
         masked_input = input_small * masked_out
         # print(f"AFTER: masked_input.shape: {masked_input.shape}")

@@ -42,6 +42,15 @@ class LogSoftmax(nn.Module):
         return F.log_softmax(x, dim=self.dim)
 
 
+class Softmax(nn.Module):
+    def __init__(self, dim=1):
+        super(Softmax, self).__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        return F.softmax(x, dim=self.dim)
+
+
 class Conv1x1(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, bias=False, activation=None):
         super(Conv1x1, self).__init__()
@@ -49,8 +58,10 @@ class Conv1x1(nn.Module):
         self.bn = nn.BatchNorm2d(out_channels)
         if activation == "gelu":
             self.activation = nn.GELU()
-        elif activation:
+        elif activation == "relu":
             self.activation = nn.ReLU(inplace=True)
+        elif activation == "sigmoid":
+            self.activation = nn.Sigmoid()
         else:
             self.activation = None
 

@@ -8,7 +8,6 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torchvision.transforms as transforms
 from PIL import Image
 
 if 'REPO_DIR' not in os.environ:
@@ -125,14 +124,14 @@ def save_train_images(epoch: int,
     # Select one or two examples from the validation set
     example_idx = random.randint(0, inputs.size(0) - 1)
 
-    print(
-        f"\ninputs.shape: {inputs.shape}, seg_target.shape: {seg_target.shape}, inpaint_target.shape: {inpaint_target.shape}")
-    print(
-        f"outputs_mask.shape: {outputs['mask'].shape}, outputs_inpainted_image.shape: {outputs['inpainted_image'].shape}\n")
+    # print(
+    #     f"\ninputs.shape: {inputs.shape}, seg_target.shape: {seg_target.shape}, inpaint_target.shape: {inpaint_target.shape}")
+    # print(
+    #     f"outputs_mask.shape: {outputs['mask'].shape}, outputs_inpainted_image.shape: {outputs['inpainted_image'].shape}\n")
     input_image = inputs[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
     inpaint_target_image = inpaint_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
     output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
-    output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy().transpose(1, 2, 0)
+    output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy()
 
     # Handle seg_target based on its shape
     if seg_target.dim() == 3:  # If it's [B, H, W]
@@ -142,14 +141,7 @@ def save_train_images(epoch: int,
     else:
         raise ValueError(f"Unexpected shape for seg_target: {seg_target.shape}")
 
-    # Resize tensors to match input tensor size
-    output_mask = transforms.ToPILImage()(output_mask).convert('RGB')
-    output_mask = transforms.Resize((512, 512))(output_mask)
-    output_mask = transforms.ToTensor()(output_mask).permute(1, 2, 0)
-
-    seg_target_image = transforms.ToPILImage()(seg_target_image).convert('RGB')
-    seg_target_image = transforms.Resize((512, 512))(seg_target_image)
-    seg_target_image = transforms.ToTensor()(seg_target_image).permute(1, 2, 0)
+    # Convert the segmentation target to a colorized mask
 
     # Convert numpy arrays back to tensors
     input_tensor = torch.from_numpy(input_image)
@@ -164,6 +156,7 @@ def save_train_images(epoch: int,
     # Guarantee that the values are in the [0, 1] range
     input_tensor = torch.clamp(input_tensor, min=0, max=1)
     inpaint_target_tensor = torch.clamp(inpaint_target_tensor, min=0, max=1)
+    print(f"output_tensor.min(): {output_tensor.min()}, output_tensor.max(): {output_tensor.max()}")
     output_tensor = torch.clamp(output_tensor, min=0, max=1)
 
     # Create a grid of images
@@ -178,7 +171,7 @@ def save_train_images(epoch: int,
     axs[0, 2].set_title('Output Image')
     axs[1, 0].imshow(seg_target_image.squeeze(), cmap='tab20')
     axs[1, 0].set_title('Segmentation Target')
-    axs[1, 1].imshow(output_mask.squeeze(), cmap='tab20')
+    # axs[1, 1].imshow(colorized_mask_tensor)
     axs[1, 1].set_title('Output Mask')
     axs[1, 2].axis('off')  # Leave this subplot empty
 

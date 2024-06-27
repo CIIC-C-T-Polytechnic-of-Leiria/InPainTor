@@ -11,33 +11,30 @@
 import argparse
 import importlib
 import os
-import random
 from datetime import datetime
 
 import loguru
-import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
-import torchvision.transforms as transforms
-from torch.nn import Module, MSELoss, CrossEntropyLoss
+from torch.nn import Module, MSELoss, NLLLoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import dataset
 import losses
-# import logger
 import model
+import visualizations
 
 # Reload the modules in case they have been modified
 importlib.reload(dataset)
 importlib.reload(model)
 importlib.reload(losses)
-# importlib.reload(logger)
+importlib.reload(visualizations)
 
 from data_augmentation import RandAugment
 from dataset import RORDDataset
 from model import InpainTor
-from vizualizations import plot_training_log
+from visualizations import plot_training_log, save_train_images
 
 loguru.logger.remove()  # Remove the default logger
 log_file = f"logs/train{datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')}.log"
@@ -88,145 +85,114 @@ class Trainer:
 
     def train(self, num_epochs: int):
         for epoch in range(num_epochs):
-            self.model.train()
-            total_loss = 0
-            with tqdm(self.train_loader, desc=f'Epoch {epoch + 1:<2} - Training', unit_scale=True,
-                      colour='green', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
-                for batch in pbar:
-                    # inputs, seg_gt, inpaint_gt = [x.to(self.device) for x in batch.values()]
-                    inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
-                    self.optim.zero_grad()
-                    output = self.model(inputs)
-                    args_loss = (output, seg_gt, inpaint_gt, self.seg_loss, self.inpaint_loss, self.lambda_)
-                    loss = composite_loss(*args_loss)
-                    loss.backward()
-                    self.optim.step()
-                    total_loss += loss.item()
-                    pbar.set_description(f'Epoch {epoch + 1:<2} - Training, Loss: {total_loss / (pbar.n + 1):.6f}')
-
-            train_loss = total_loss / len(self.train_loader)
-            self.model.eval()
-
-            # Validation loop
-            total_val_loss = 0
-            with tqdm(self.val_loader, desc=f'Epoch {epoch + 1:<2} - Validation', unit_scale=True,
-                      colour='blue', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
-                for batch in pbar:
-                    # inputs, seg_target, inpaint_target = [x.to(self.device) for x in batch.values()]
-                    inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
-                    output = self.model(inputs)
-                    args_loss = (output, seg_gt, inpaint_gt, self.seg_loss, self.inpaint_loss, self.lambda_)
-                    loss = composite_loss(*args_loss)
-                    total_val_loss += loss.item()
-                    pbar.set_description(
-                        f'Epoch {epoch + 1:<2} - Validation, Val Loss: {total_val_loss / (pbar.n + 1):.6f}')
-
-            val_loss = total_val_loss / len(self.val_loader)
+            train_loss = self.train_epoch(epoch)
+            val_loss = self.validate_epoch(epoch, save_images=True)
 
             self.logger.info(
-                f'Epoch {epoch + 1}, Loss: {train_loss:.4f}, Val Loss: {val_loss:.6f}, Best Val Loss: {self.best_val_loss:.6f}, Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+                f'Epoch {epoch + 1}, Loss: {train_loss:.4f}, Val Loss: {val_loss:.6f}, '
+                f'Best Val Loss: {self.best_val_loss:.6f}, '
+                f'Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
             )
-
-            # self.log_train.log_metrics(epoch, train_loss, val_loss)
-
-            # Save the images to during training to check the model improvements
-            self.save_images(epoch, inputs, seg_gt, inpaint_gt, output)
 
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
                 self.best_model_path = self.save_best_model()
                 self.logger.info(f'Saving best model to {self.best_model_path}')
 
-    @staticmethod
-    def save_images(epoch: int,
-                    inputs: torch.Tensor,
-                    seg_target: torch.Tensor,
-                    inpaint_target: torch.Tensor,
-                    outputs: dict):
+    def train_epoch(self, epoch: int, save_images: bool = False) -> float:
+        self.model.train()
+        total_loss = 0
+        with tqdm(self.train_loader, desc=f'Epoch {epoch + 1:<2} - Training', unit_scale=True,
+                  colour='green', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
+            for batch in pbar:
+                inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
+                self.optim.zero_grad()
+                output = self.model(inputs)
+                loss = self.loss(output, seg_gt, inpaint_gt)
+                loss.backward()
+                self.optim.step()
+                total_loss += loss.item()
+                pbar.set_description(f'Epoch {epoch + 1:<2} - Training, Loss: {total_loss / (pbar.n + 1):.6f}')
+                if save_images:
+                    save_train_images(epoch, inputs, seg_gt, inpaint_gt, output)
+        return total_loss / len(self.train_loader)
 
-        # Select one or two examples from the validation set
-        example_idx = random.randint(0, inputs.size(0) - 1)
-        input_image = inputs[example_idx].cpu().numpy().transpose(1, 2, 0)
-        seg_target_image = seg_target[example_idx].cpu().numpy().transpose(1, 2, 0)
-        inpaint_target_image = inpaint_target[example_idx].cpu().numpy().transpose(1, 2, 0)
-        output_mask = outputs['mask'][example_idx].cpu().numpy().transpose(1, 2, 0)
-        output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy().transpose(1, 2, 0)
-
-        # print(f"output_image.shape: {output_image.shape}")
-
-        # Resize input tensor to match input tensor size
-        output_mask = transforms.ToPILImage()(output_mask).convert('RGB')
-        output_mask = transforms.Resize((512, 512))(output_mask)
-        output_mask = transforms.ToTensor()(output_mask).permute(1, 2, 0)
-
-        # Resize the segmentation target tensor to match the input tensor size
-        seg_target_image = transforms.ToPILImage()(seg_target_image).convert('RGB')
-        seg_target_image = transforms.Resize((512, 512))(seg_target_image)
-        seg_target_image = transforms.ToTensor()(seg_target_image).permute(1, 2, 0)
-
-        # Convert numpy arrays back to tensors
-        input_tensor = torch.from_numpy(input_image)
-        inpaint_target_tensor = torch.from_numpy(inpaint_target_image)
-        output_image = transforms.ToTensor()(output_image).permute(1, 2, 0)
-        output_tensor = output_image
-        # print(f"output_tensor.shape: {output_tensor.shape}")
-
-        # Convert the tensor to float32 and normalize it to the range [0, 1]
-        input_tensor = input_tensor.float()
-        inpaint_target_tensor = inpaint_target_tensor.float()
-        output_tensor = output_tensor.float()
-
-        # seg_target_tensor = seg_target_tensor.permute(2, 0, 1)
-        inpaint_target_tensor = inpaint_target_tensor
-        output_tensor = output_tensor
-
-        # Create a grid of images
-        fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 10))
-
-        # Identify if some tensor is not in th [0, 1] range the name only of the tensor anf the actual range
-        # for tensor_name, tensor in zip(['input_tensor', 'inpaint_target_tensor', 'output_tensor'],
-        #                                [input_tensor, inpaint_target_tensor, output_tensor]):
-        #     if tensor.min() < 0 or tensor.max() > 1:
-        #         print(f"{tensor_name} has values outside the [0, 1] range. "
-        #               f"Min: {tensor.min()}, Max: {tensor.max()}")
-
-        # Guarantee that the values are in the [0, 1] range
-        input_tensor = torch.clamp(input_tensor, min=0, max=1)
-        inpaint_target_tensor = torch.clamp(inpaint_target_tensor, min=0, max=1)
-        output_tensor = torch.clamp(output_tensor, min=0, max=1)
-
-        # Add images to subplots
-        axs[0, 0].imshow(input_tensor)
-        axs[0, 0].set_title('Input Image')
-        axs[0, 1].imshow(inpaint_target_tensor)
-        axs[0, 1].set_title('Inpaint Target')
-        axs[0, 2].imshow(output_tensor)
-        axs[0, 2].set_title('Output Image')
-        axs[1, 0].imshow(seg_target_image, cmap='tab20')
-        axs[1, 0].set_title('Segmentation Target')
-        axs[1, 1].imshow(output_mask, cmap='tab20')
-        axs[1, 1].set_title('Output Mask')
-        axs[1, 2].axis('off')  # Leave this subplot empty
-
-        # Remove axis ticks
-        for ax in axs.flat:
-            ax.set(xticks=[], yticks=[])
-
-        # Save the figure to a file
-        plt.savefig(f'logs/images/grid_image_epoch_{epoch + 1}.png', bbox_inches='tight')
-        plt.close(fig)
-
-
-def composite_loss(output, seg_gt, inpaint_gt, seg_loss, inpaint_loss, lambda_):
-    seg_output = output['mask']
-    inpaint_output = output['inpainted_image']
-    # print(f"seg_output.shape: {seg_output.shape}, seg_gt.shape: {seg_gt.shape}")
-    seg_loss_value = seg_loss(seg_output, seg_gt)
-    inpaint_loss_value = inpaint_loss(inpaint_output, inpaint_gt)
-    return lambda_ * seg_loss_value + (1 - lambda_) * inpaint_loss_value
+    def validate_epoch(self, epoch: int, save_images: bool = False) -> float:
+        self.model.eval()
+        total_val_loss = 0
+        with torch.no_grad():
+            with tqdm(self.val_loader, desc=f'Epoch {epoch + 1:<2} - Validation', unit_scale=True,
+                      colour='blue', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
+                for batch in pbar:
+                    inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
+                    output = self.model(inputs)
+                    loss = self.loss(output, seg_gt, inpaint_gt)
+                    total_val_loss += loss.item()
+                    pbar.set_description(
+                        f'Epoch {epoch + 1:<2} - Validation, Val Loss: {total_val_loss / (pbar.n + 1):.6f}')
+                    if save_images:
+                        save_train_images(epoch, inputs, seg_gt, inpaint_gt, output)
+        return total_val_loss / len(self.val_loader)
+    #
+    # def train(self, num_epochs: int):
+    #     for epoch in range(num_epochs):
+    #         self.model.train()
+    #         total_loss = 0
+    #         with tqdm(self.train_loader, desc=f'Epoch {epoch + 1:<2} - Training', unit_scale=True,
+    #                   colour='green', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
+    #             for batch in pbar:
+    #                 # inputs, seg_gt, inpaint_gt = [x.to(self.device) for x in batch.values()]
+    #                 inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
+    #                 self.optim.zero_grad()
+    #                 output = self.model(inputs)
+    #                 # args_loss = (output, seg_gt, inpaint_gt, self.seg_loss, self.inpaint_loss, self.lambda_)
+    #                 # loss = composite_loss(*args_loss)
+    #                 loss = self.loss(output, seg_gt, inpaint_gt)
+    #                 loss.backward()
+    #                 self.optim.step()
+    #                 total_loss += loss.item()
+    #                 pbar.set_description(f'Epoch {epoch + 1:<2} - Training, Loss: {total_loss / (pbar.n + 1):.6f}')
+    #
+    #         train_loss = total_loss / len(self.train_loader)
+    #         self.model.eval()
+    #
+    #         # Validation loop
+    #         total_val_loss = 0
+    #         with tqdm(self.val_loader, desc=f'Epoch {epoch + 1:<2} - Validation', unit_scale=True,
+    #                   colour='blue', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
+    #             for batch in pbar:
+    #                 # inputs, seg_target, inpaint_target = [x.to(self.device) for x in batch.values()]
+    #                 inputs, seg_gt, inpaint_gt = [batch[k].to(self.device) for k in ['image', 'mask', 'gt']]
+    #                 output = self.model(inputs)
+    #                 # args_loss = (output, seg_gt, inpaint_gt, self.seg_loss, self.inpaint_loss, self.lambda_)
+    #                 # loss = composite_loss(*args_loss)
+    #                 loss = self.loss(output, seg_gt, inpaint_gt)
+    #                 total_val_loss += loss.item()
+    #                 pbar.set_description(
+    #                     f'Epoch {epoch + 1:<2} - Validation, Val Loss: {total_val_loss / (pbar.n + 1):.6f}')
+    #
+    #         val_loss = total_val_loss / len(self.val_loader)
+    #
+    #         self.logger.info(
+    #             f'Epoch {epoch + 1}, Loss: {train_loss:.4f}, Val Loss: {val_loss:.6f}, Best Val Loss: {self.best_val_loss:.6f}, Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+    #         )
+    #
+    #         # Save the images to during training to check the model improvements
+    #         # save_images(epoch, inputs, seg_gt, inpaint_gt, output)
+    #
+    #         if val_loss < self.best_val_loss:
+    #             self.best_val_loss = val_loss
+    #             self.best_model_path = self.save_best_model()
+    #             self.logger.info(f'Saving best model to {self.best_model_path}')
 
 
-if __name__ == '__main__':
+def parse_args() -> argparse.Namespace:
+    """
+    Parse the command line arguments.
+
+    Returns:
+        argparse.Namespace: The parsed arguments.
+    """
     parser = argparse.ArgumentParser(description='Train the InPainTor model.')
     parser.add_argument('--data_dir', type=str, help='Path to dataset dir.')
     parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs to train')
@@ -234,36 +200,45 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for the optim')
     parser.add_argument('--image_size', type=int, default=512, help='Size of the input images, assumed to be square')
     parser.add_argument('--mask_size', type=int, default=256, help='Size of the masks, assumed to be square')
-    parser.add_argument('--augment', action='store_false', help='Apply data augmentation')
+    parser.add_argument('--augment', action='store_true', help='Apply data augmentation')
     parser.add_argument('--num_augment_operations', type=int, default=3, help='Number of data augmentation operations')
     parser.add_argument('--augment_magnitude', type=int, default=5, help='Magnitude of data augmentation operations')
     parser.add_argument('--model_name', type=str, default='InpainTor', help='Name of the model')
     parser.add_argument('--lambda_', type=float, default=0.99, help='Weight for the composite loss')
+    parser.add_argument('--debug', action='store_false', help='Debug mode')
     parser.add_argument('--selected_classes', type=int, nargs='+', default=[0],
-                        help='List of classes IDs for inpainting (default: [0]: person)')
+                        help='List of classes IDs for inpainting (default:: person)')
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    # Create data loaders
-    # train_dataset = RORDDataset(root_dir=args.data_dir, split='train', image_size=[args.image_size, args.image_size])
-    # val_dataset = RORDDataset(root_dir=args.data_dir, split='val', image_size=[args.image_size, args.image_size])
 
-    # For DEBUG purposes TODO: Remove this line
-    train_dataset = RORDDataset(root_dir=args.data_dir, split='debug', image_size=[args.image_size, args.image_size])
-    val_dataset = RORDDataset(root_dir=args.data_dir, split='debug', image_size=[args.image_size, args.image_size])
+if __name__ == '__main__':
+
+    args = parse_args()
+
+    if args.debug:
+        train_dataset = RORDDataset(root_dir=args.data_dir, split='debug',
+                                    image_size=[args.image_size, args.image_size])
+        val_dataset = RORDDataset(root_dir=args.data_dir, split='debug', image_size=[args.image_size, args.image_size])
+    else:
+        train_dataset = RORDDataset(root_dir=args.data_dir, split='train',
+                                    image_size=[args.image_size, args.image_size])
+        val_dataset = RORDDataset(root_dir=args.data_dir, split='val', image_size=[args.image_size, args.image_size])
 
     loguru.logger.info(f'Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}')
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
-    # Create model, criterion, and optim
+    # Create model, criterion, and optimizer
     model = InpainTor(num_classes=80, selected_classes=args.selected_classes)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
 
-    criterion_segmentation = CrossEntropyLoss(ignore_index=-1)  # BCELoss() # IoULoss() #DiceLoss() # CrossEntropyLoss()
-    criterion_inpainting = MSELoss()  # MSELoss()  # BCELoss()
+    # Define the loss function
+    criterion_segmentation = NLLLoss()  # Segmentation Losses: BCELoss() # IoULoss() #DiceLoss() # CrossEntropyLoss() #NLLLoss()
+    criterion_inpainting = MSELoss()  # Inpainting Losses: MSELoss()
+    composite_loss = losses.CompositeLoss(criterion_segmentation, criterion_inpainting, args.lambda_)
 
     # Create trainer
     trainer = Trainer(model_=model,
