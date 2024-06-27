@@ -120,6 +120,7 @@ class Trainer:
     def validate_epoch(self, epoch: int, save_images: bool = False) -> float:
         self.model.eval()
         total_val_loss = 0
+        last_batch = None
         with torch.no_grad():
             with tqdm(self.val_loader, desc=f'Epoch {epoch + 1:<2} - Validation', unit_scale=True,
                       colour='blue', bar_format='{l_bar}{bar:10}|{n_fmt}/{total_fmt}[{elapsed}<{remaining}]') as pbar:
@@ -130,8 +131,12 @@ class Trainer:
                     total_val_loss += loss.item()
                     pbar.set_description(
                         f'Epoch {epoch + 1:<2} - Validation, Val Loss: {total_val_loss / (pbar.n + 1):.6f}')
-                    if save_images:
-                        save_train_images(epoch, inputs, seg_gt, inpaint_gt, output)
+                    last_batch = (inputs, seg_gt, inpaint_gt, output)
+
+        if save_images and last_batch is not None:
+            inputs, seg_gt, inpaint_gt, output = last_batch
+            save_train_images(epoch, inputs, seg_gt, inpaint_gt, output)
+
         return total_val_loss / len(self.val_loader)
     #
     # def train(self, num_epochs: int):

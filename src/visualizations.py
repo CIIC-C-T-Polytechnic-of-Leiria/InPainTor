@@ -1,14 +1,13 @@
 import datetime
 import os
-import random
 import re
 
+import imageio
 import imageio.v2 as imageio
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from PIL import Image
+from tqdm import tqdm
 
 if 'REPO_DIR' not in os.environ:
     os.environ['REPO_DIR'] = '/home/tiagociiic/Projects/InpainTor'
@@ -16,7 +15,8 @@ if 'REPO_DIR' not in os.environ:
 repo_dir = os.environ['REPO_DIR']
 
 
-def video_from_images(image_folder: str, output_video_path: str, fps: int = 30) -> None:
+def video_from_images(image_folder: str, output_video_path: str, fps: int = 30, new_width: int = 1280,
+                      new_height: int = 720) -> None:
     """
     Generate a video from a sequence of ordered images.
 
@@ -24,31 +24,36 @@ def video_from_images(image_folder: str, output_video_path: str, fps: int = 30) 
     image_folder (str): Path to the folder containing the images.
     output_video_path (str): Path to the output video file.
     fps (int): Frames per second of the video.
+    new_width (int): The desired width of the images.
+    new_height (int): The desired height of the images.
 
     Returns:
     None
     """
-    images = [os.path.join(image_folder, img) for img in sorted(os.listdir(image_folder)) if
-              img.endswith(('.png', '.jpg', '.jpeg'))]
+    # Get all image files from the folder
+    image_files = [f for f in sorted(os.listdir(image_folder)) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
 
-    if not images:
+    if not image_files:
         print("No images found in the specified folder.")
         return
 
-    def adjust_image_size(image_path: str) -> Image:
-        img = Image.open(image_path)
+    print(f"Found {len(image_files)} images. Starting video creation...")
+
+    def adjust_image_size(img: Image.Image, new_width: int, new_height: int) -> Image.Image:
         width, height = img.size
-        new_width = (width + 15) // 16 * 16
-        new_height = (height + 15) // 16 * 16
         if (new_width, new_height) != (width, height):
-            img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
+            return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
         return img
 
     with imageio.get_writer(output_video_path, fps=fps) as writer:
-        for image_path in images:
-            image = adjust_image_size(image_path)
+        for image_file in tqdm(image_files, desc="Processing images", unit="image", colour='green'):
+            image_path = os.path.join(image_folder, image_file)
+            with Image.open(image_path) as img:
+                adjusted_img = adjust_image_size(img, new_width, new_height)
+                writer.append_data(np.asarray(adjusted_img))
 
-    print(f"Video saved at: {output_video_path}")
+    print(f"Video successfully saved at: {output_video_path}")
+    print(f"Video details: {len(image_files)} frames, {fps} fps")
 
 
 def plot_training_log(file_path, log_scale=False):
@@ -115,19 +120,26 @@ def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
     grid_image.save(os.path.join(output_path, f"grid_image_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"))
 
 
+import matplotlib.pyplot as plt
+import torch
+import random
+import numpy as np
+
+
 def save_train_images(epoch: int,
                       inputs: torch.Tensor,
                       seg_target: torch.Tensor,
                       inpaint_target: torch.Tensor,
                       outputs: dict,
-                      save_path: str = 'logs/images'):
+                      save_path: str = 'logs/images',
+                      random_index: bool = False) -> None:
     # Select one or two examples from the validation set
-    example_idx = random.randint(0, inputs.size(0) - 1)
 
-    # print(
-    #     f"\ninputs.shape: {inputs.shape}, seg_target.shape: {seg_target.shape}, inpaint_target.shape: {inpaint_target.shape}")
-    # print(
-    #     f"outputs_mask.shape: {outputs['mask'].shape}, outputs_inpainted_image.shape: {outputs['inpainted_image'].shape}\n")
+    if random_index:
+        example_idx = random.randint(0, inputs.size(0) - 1)
+    else:
+        example_idx = 0
+
     input_image = inputs[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
     inpaint_target_image = inpaint_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
     output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
@@ -140,8 +152,6 @@ def save_train_images(epoch: int,
         seg_target_image = seg_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
     else:
         raise ValueError(f"Unexpected shape for seg_target: {seg_target.shape}")
-
-    # Convert the segmentation target to a colorized mask
 
     # Convert numpy arrays back to tensors
     input_tensor = torch.from_numpy(input_image)
@@ -156,11 +166,10 @@ def save_train_images(epoch: int,
     # Guarantee that the values are in the [0, 1] range
     input_tensor = torch.clamp(input_tensor, min=0, max=1)
     inpaint_target_tensor = torch.clamp(inpaint_target_tensor, min=0, max=1)
-    # print(f"output_tensor.min(): {output_tensor.min()}, output_tensor.max(): {output_tensor.max()}")
     output_tensor = torch.clamp(output_tensor, min=0, max=1)
 
     # Create a grid of images
-    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 10))
+    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(23, 13))
 
     # Add images to subplots
     axs[0, 0].imshow(input_tensor)
@@ -169,16 +178,20 @@ def save_train_images(epoch: int,
     axs[0, 1].set_title('Inpaint Target')
     axs[0, 2].imshow(output_tensor)
     axs[0, 2].set_title('Output Image')
-    axs[1, 0].imshow(seg_target_image.squeeze(), cmap='tab20')
+    axs[1, 0].imshow(seg_target_image.squeeze(), cmap='gray')
     axs[1, 0].set_title('Segmentation Target')
-    # axs[1, 1].imshow(colorized_mask_tensor)
-    axs[1, 1].set_title('Output Mask')
-    axs[1, 2].axis('off')  # Leave this subplot empty
 
-    # Remove axis ticks
-    for ax in axs.flat:
-        ax.set(xticks=[], yticks=[])
+    # Handle output_mask - show first two channels
+    if output_mask.ndim == 3 and output_mask.shape[0] >= 2:
+        axs[1, 1].imshow(output_mask[0], cmap='gray')
+        axs[1, 1].set_title('Output Mask (Channel 0)')
+        axs[1, 2].imshow(output_mask[1], cmap='gray')
+        axs[1, 2].set_title('Output Mask (Channel 1)')
+    else:
+        axs[1, 1].imshow(output_mask.squeeze(), cmap='gray')
+        axs[1, 1].set_title('Output Mask')
+        axs[1, 2].axis('off')  # Leave this subplot empty if there's only one channel
 
     # Save the figure to a file
-    plt.savefig(f'{save_path}/grid_image_epoch_{epoch + 1}.png', bbox_inches='tight')
+    plt.savefig(f'{save_path}/grid_image_epoch_{epoch + 1}.png', bbox_inches='tight', dpi=300)
     plt.close(fig)
