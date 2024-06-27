@@ -156,7 +156,7 @@ def save_train_images(epoch: int,
     # Guarantee that the values are in the [0, 1] range
     input_tensor = torch.clamp(input_tensor, min=0, max=1)
     inpaint_target_tensor = torch.clamp(inpaint_target_tensor, min=0, max=1)
-    print(f"output_tensor.min(): {output_tensor.min()}, output_tensor.max(): {output_tensor.max()}")
+    # print(f"output_tensor.min(): {output_tensor.min()}, output_tensor.max(): {output_tensor.max()}")
     output_tensor = torch.clamp(output_tensor, min=0, max=1)
 
     # Create a grid of images

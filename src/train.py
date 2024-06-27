@@ -205,7 +205,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--augment_magnitude', type=int, default=5, help='Magnitude of data augmentation operations')
     parser.add_argument('--model_name', type=str, default='InpainTor', help='Name of the model')
     parser.add_argument('--lambda_', type=float, default=0.99, help='Weight for the composite loss')
-    parser.add_argument('--debug', action='store_false', help='Debug mode')
+    parser.add_argument('--debug', action='store_true', default=False, help='Debug mode')
     parser.add_argument('--selected_classes', type=int, nargs='+', default=[0],
                         help='List of classes IDs for inpainting (default:: person)')
 
@@ -220,6 +220,7 @@ if __name__ == '__main__':
         train_dataset = RORDDataset(root_dir=args.data_dir, split='debug',
                                     image_size=[args.image_size, args.image_size])
         val_dataset = RORDDataset(root_dir=args.data_dir, split='debug', image_size=[args.image_size, args.image_size])
+        print("Debug mode enabled. Using debug dataset.")
     else:
         train_dataset = RORDDataset(root_dir=args.data_dir, split='train',
                                     image_size=[args.image_size, args.image_size])
