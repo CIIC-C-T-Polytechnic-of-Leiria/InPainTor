@@ -11,6 +11,8 @@
 
 ## Description
 
+![Training](assets/training_gif.gif)
+
 The **InPainTor** model has the capability to recognize objects and perform inpainting on specific objects in real-time.
 
 This enables the model to selectively remove and fill in missing or unwanted objects in images, while preserving the

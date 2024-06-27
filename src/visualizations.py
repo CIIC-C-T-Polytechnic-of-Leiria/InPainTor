@@ -1,10 +1,13 @@
 import datetime
 import os
+import random
 import re
 
 import imageio
 import imageio.v2 as imageio
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -31,7 +34,10 @@ def video_from_images(image_folder: str, output_video_path: str, fps: int = 30, 
     None
     """
     # Get all image files from the folder
-    image_files = [f for f in sorted(os.listdir(image_folder)) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    image_files = [f for f in os.listdir(image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+    # Sort image files based on epoch number
+    image_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
 
     if not image_files:
         print("No images found in the specified folder.")
@@ -118,12 +124,6 @@ def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
 
     # Save the grid image
     grid_image.save(os.path.join(output_path, f"grid_image_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"))
-
-
-import matplotlib.pyplot as plt
-import torch
-import random
-import numpy as np
 
 
 def save_train_images(epoch: int,
