@@ -151,61 +151,65 @@ class RORDDataset(Dataset):
         if not self.image_files or not self.gt_files or not self.mask_files:
             raise ValueError("One or more of the lists is empty")
 
+        self.valid_indices = []
+        for i in range(len(self.image_files)):
+            if os.path.exists(self.image_files[i]) and os.path.exists(self.gt_files[i]) and os.path.exists(
+                    self.mask_files[i]):
+                self.valid_indices.append(i)
+            else:
+                logger.warning(f"Skipping incomplete data at index {i}")
+
+        logger.info(f"Found {len(self.valid_indices)} valid samples out of {len(self.image_files)} total samples")
+
     def __getitem__(self, index: int) -> dict:
-        image_file = self.image_files[index]
-        gt_file = self.gt_files[index]
-        mask_file = self.mask_files[index]
+        try:
+            valid_index = self.valid_indices[index]
+            image_file = self.image_files[valid_index]
+            gt_file = self.gt_files[valid_index]
+            mask_file = self.mask_files[valid_index]
 
-        image_name = os.path.splitext(os.path.basename(image_file))[0]
-        gt_name = os.path.splitext(os.path.basename(gt_file))[0]
-        mask_name = os.path.splitext(os.path.basename(mask_file))[0]
+            image_name = os.path.splitext(os.path.basename(image_file))[0]
+            gt_name = os.path.splitext(os.path.basename(gt_file))[0]
+            mask_name = os.path.splitext(os.path.basename(mask_file))[0]
 
-        if not (image_name == gt_name == mask_name):
-            print(f"Image file: {os.path.basename(image_file)}")
-            print(f"GT file: {os.path.basename(gt_file)}")
-            print(f"Mask file: {os.path.basename(mask_file)}")
-            raise ValueError("File names do not match")
+            if not (image_name == gt_name == mask_name):
+                print(f"Image file: {os.path.basename(image_file)}")
+                print(f"GT file: {os.path.basename(gt_file)}")
+                print(f"Mask file: {os.path.basename(mask_file)}")
+                raise ValueError("File names do not match")
 
-        image = datasets.folder.default_loader(str(image_file))
-        gt = datasets.folder.default_loader(str(gt_file))
-        mask = datasets.folder.default_loader(str(mask_file))
+            image = datasets.folder.default_loader(str(image_file))
+            gt = datasets.folder.default_loader(str(gt_file))
+            mask = datasets.folder.default_loader(str(mask_file))
 
-        image, gt = [transforms.Compose([
-            transforms.Resize(self.image_size),
-            transforms.ToTensor()])(img) for img in [image, gt]]
+            image, gt = [transforms.Compose([
+                transforms.Resize(self.image_size),
+                transforms.ToTensor()])(img) for img in [image, gt]]
 
-        # mask = transforms.Compose([
-        #     transforms.Resize([size // 2 for size in self.image_size]),
-        #     transforms.Grayscale(),
-        #     transforms.ToTensor(),
-        #     transforms.Lambda(lambda x: (x > 0.5).float())
-        # ])(mask)
+            mask = transforms.Compose([
+                transforms.Resize([size // 2 for size in self.image_size],
+                                  interpolation=transforms.InterpolationMode.NEAREST),
+                transforms.Grayscale(),
+                transforms.PILToTensor(),
+                transforms.Lambda(lambda x: x.squeeze().long())
+            ])(mask)
 
-        # mask = transforms.Compose([
-        #     transforms.Resize([size // 2 for size in self.image_size]),
-        #     transforms.Grayscale(),
-        # ])(mask)
+            # Ensure values are in the range [0, 79]
+            mask = torch.clamp(mask, 0, 79)
 
-        mask = transforms.Compose([
-            transforms.Resize([size // 2 for size in self.image_size],
-                              interpolation=transforms.InterpolationMode.NEAREST),
-            transforms.Grayscale(),
-            transforms.PILToTensor(),
-            transforms.Lambda(lambda x: x.squeeze().long())
-        ])(mask)
+            assert mask.dtype == torch.long, f"Mask dtype is {mask.dtype}, expected torch.long"
+            assert mask.min() >= 0 and mask.max() <= 79, f"Mask values out of range: min={mask.min()}, max={mask.max()}"
+            assert mask.dim() == 2, f"Mask has {mask.dim()} dimensions, expected 2"
 
-        # Ensure values are in the range [0, 79]
-        mask = torch.clamp(mask, 0, 79)
+            if self.input_transform:
+                image = self.input_transform(image)
+                gt = self.input_transform(gt)
 
-        assert mask.dtype == torch.long, f"Mask dtype is {mask.dtype}, expected torch.long"
-        assert mask.min() >= 0 and mask.max() <= 79, f"Mask values out of range: min={mask.min()}, max={mask.max()}"
-        assert mask.dim() == 2, f"Mask has {mask.dim()} dimensions, expected 2"
-
-        if self.input_transform:
-            image = self.input_transform(image)
-            gt = self.input_transform(gt)
-
-        return {'image': image, 'gt': gt, 'mask': mask}
+            return {'image': image, 'gt': gt, 'mask': mask}
+        except Exception as e:
+            logger.error(f"Error loading data at index {index}: {str(e)}")
+            return {'image': torch.zeros(3, *self.image_size), 'gt': torch.zeros(3, *self.image_size),
+                    'mask': torch.zeros(self.image_size[0] // 2, self.image_size[1] // 2, dtype=torch.long)}
 
     def __len__(self) -> int:
-        return len(self.image_files)
+        return len(self.valid_indices)

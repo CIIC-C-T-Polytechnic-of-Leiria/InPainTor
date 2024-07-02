@@ -1,7 +1,9 @@
+import os
 from typing import List
 
 from torch import cat
 from torch.nn import Module
+from torchvision.utils import save_image
 
 from layers import AttentionBlock, AveragePool2d, LogSoftmax, ClassesToMask
 from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D
@@ -63,9 +65,9 @@ class SegmentorDecoder(Module):
 
 
 class GenerativeDecoder(Module):
-    def __init__(self, base_chs: int = 16, num_classes: int = 80, selected_classes: List[int] = [1]):
+    def __init__(self, selected_classes: List[int], base_chs: int = 16, num_classes: int = 80, ):
         super(GenerativeDecoder, self).__init__()
-        self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes)
+        self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes, use_threshold=True)
         self.conv_transp_block1 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 16)
         self.conv_transp_block2 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 8)
         self.conv_transp_block3 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 8)
@@ -78,11 +80,40 @@ class GenerativeDecoder(Module):
         self.attention_block1 = AttentionBlock(in_channels=base_chs * 8, attention_dim=base_chs * 8)
         self.attention_block2 = AttentionBlock(in_channels=base_chs * 4, attention_dim=base_chs * 4)
 
+        # -- TODO DEBUG: save masked_input to disk ----------------
+        self.counter = 0
+        self.save_path = "outputs/debug"
+        os.makedirs(self.save_path, exist_ok=True)
+
+    def save_mask(self, tensor, step, name):
+        batch_size = tensor.size(0)
+        save_file = os.path.join(self.save_path, f'{name}_step_{step}_sample_{0}.png')
+        save_image(tensor[0], save_file)
+
+        # for i in range(batch_size):
+        #     save_file = os.path.join(self.save_path, f'{name}_step_{step}_sample_{i}.png')
+        #     save_image(tensor[i], save_file)
+        # --------------------------------------------------------------
+
     def forward(self, input_image, enc4, classes_out, seg2, seg3):
+        self.counter += 1
+
         input_small = self.average_pool(input_image)
+        # print(f"classes_out: {classes_out}")
         masked_out = self.class_selector(classes_out)
+
         # print(f"\nBEFORE: input_small.shape: {input_small.shape}", f"masked_out.shape: {masked_out.shape}")
         masked_input = input_small * masked_out
+
+        # -- TODO: DEBUG: save masked_input to disk ---------------
+        if self.counter % 10 == 0:
+            self.save_mask(masked_input, self.counter, name="masked_input")
+            # self.save_mask(masked_out, self.counter, name="masked_out")
+            # print(f"\nmasked_out max: {masked_out.max():.3f}, masked_out min: {masked_out.min():.3f}")
+            # print(f"masked_input MAX: {masked_input.max():.3f}, masked_input MIN: {masked_input.min():.3f}")
+            # print(f"masked_out mean: {masked_out.mean():.3f}, masked_input mean: {masked_input.mean():.3f}")
+        # --------------------------------------------------------------
+
         # print(f"AFTER: masked_input.shape: {masked_input.shape}")
         attention1 = self.attention_block1(seg2)
         attention2 = self.attention_block2(seg3)
@@ -127,8 +158,9 @@ class InpainTor(Module):
         super().__init__()  # Call the parent class's __init__ method
         self.shared_encoder = SharedEncoder()
         self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes)
-        # selected_classes=selected_classes)
-        self.generative_decoder = GenerativeDecoder()
+        # selected_classes=selected_classes
+        self.generative_decoder = GenerativeDecoder(base_chs=base_chs, num_classes=num_classes,
+                                                    selected_classes=selected_classes)
 
     def forward(self, x):
         _, enc2, enc3, enc4 = self.shared_encoder(x)

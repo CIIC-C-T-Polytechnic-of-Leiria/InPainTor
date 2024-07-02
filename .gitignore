@@ -142,3 +142,6 @@ outputs/CamVid
 
 # Ignore the following files
 *.pth
+
+logs/images/
+outputs/debug/

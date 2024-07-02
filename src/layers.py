@@ -192,11 +192,26 @@ class AttentionBlock(nn.Module):
 
 
 class ClassesToMask(nn.Module):
-    def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.5):
+    """
+    Convert a multi-class segmentation map to a binary mask for a subset of classes.
+
+    Args:
+        num_classes: The total number of classes in the segmentation map.
+        class_ids: A list of class IDs to include in the mask.
+        threshold: The threshold value to use for binarizing the mask.
+        use_threshold: A boolean indicating whether to apply thresholding.
+
+    Returns:
+        A binary mask tensor of shape NxHxW, where 0 indicates the presence of an object
+        and 1 indicates the absence of an object.
+    """
+
+    def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
         super(ClassesToMask, self).__init__()
         self.num_classes = num_classes
         self.class_ids = class_ids
         self.threshold = threshold
+        self.use_threshold = use_threshold
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -209,7 +224,12 @@ class ClassesToMask(nn.Module):
         x = x[:, self.class_ids, :, :]
         probs = torch.sigmoid(x)
         max_probs, _ = torch.max(probs, dim=1, keepdim=True)
-        mask = (max_probs <= self.threshold).float()
+
+        if self.use_threshold:
+            mask = (max_probs > self.threshold).float()
+        else:
+            mask = max_probs
+
         return mask
 
 
