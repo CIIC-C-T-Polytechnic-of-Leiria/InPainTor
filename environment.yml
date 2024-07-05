@@ -10,3 +10,5 @@ dependencies:
   - tqdm
 vars:
   REPO_DATA_DIR: "/home/tiagociiic/Projects/InpainTor"
+  COCO_IMG_MEAN: [ 0.485, 0.456, 0.406 ]
+  COCO_IMG_STD: [ 0.229, 0.224, 0.225 ]

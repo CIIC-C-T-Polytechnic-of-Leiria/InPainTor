@@ -1,9 +1,9 @@
-# This script loads a trained model, creates a test data loader, and performs inference on the test set. The output masks are saved to files using `torch.save`.
+# This script loads a trained model_, creates a test data loader, and performs inference on the test set. The output masks are saved to files using `torch.save`.
 # You can modify the script to save the output masks in a different format or to a different location.
 #
 # To run the script, you can use the following command:
 #     `python src/inference.py --model_path checkpoints/best_model_old.pth --data_dir data/CamVid`
-# Replace `path/to/trained/model.pth` with the path to the trained model file, and `path/to/dataset` with the path to the dataset directory.
+# Replace `path/to/trained/model_.pth` with the path to the trained model_ file, and `path/to/dataset` with the path to the dataset directory.
 
 import argparse
 import importlib
@@ -33,7 +33,7 @@ def inference(model_path: str, data_dir: str, image_size: tuple, mask_size: tupl
     test_dataset = CamVidDataset(root_dir=data_dir, split='test', image_size=image_size, mask_size=mask_size)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    # Load model
+    # Load model_
     model = InpainTor(num_classes=40)
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cuda')))
     model.eval()
@@ -59,7 +59,7 @@ def inference(model_path: str, data_dir: str, image_size: tuple, mask_size: tupl
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Inference on the test set')
-    parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model')
+    parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model_')
     parser.add_argument('--data_dir', type=str, default='data/CamVid', help='Path to the dataset dir')
     parser.add_argument('--image_size', type=int, default=512, help='Size of the input images, assumed to be square')
     parser.add_argument('--mask_size', type=int, default=256, help='Size of the masks, assumed to be square')

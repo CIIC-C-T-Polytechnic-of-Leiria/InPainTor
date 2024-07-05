@@ -1,10 +1,11 @@
 import datetime
 import os
+import random
 import re
 
-import imageio
 import imageio.v2 as imageio
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
@@ -131,12 +132,6 @@ def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
     grid_image.save(os.path.join(output_path, f"grid_image_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"))
 
 
-import torch
-import random
-import os
-import matplotlib.pyplot as plt
-
-
 def save_train_images(step: int,
                       inputs: torch.Tensor,
                       seg_target: torch.Tensor,
@@ -146,6 +141,22 @@ def save_train_images(step: int,
                       is_validation: bool = False,
                       save_path: str = 'logs/images',
                       random_index: bool = False) -> None:
+    """
+    Save a grid of images for visualization during training or validation.
+
+    Parameters:
+        step (int): The current training step.
+        inputs (torch.Tensor): The input images.
+        seg_target (torch.Tensor): The segmentation target.
+        inpaint_target (torch.Tensor): The inpainting target.
+        outputs (dict): The model_ outputs.
+        masked_input (torch.Tensor): The masked input images.
+        is_validation (bool): Whether the images are from the validation set.
+        save_path (str): The directory to save the images.
+        random_index (bool): Whether to select a random index from the batch.
+
+    """
+
     # Select one or two examples from the batch
     if random_index:
         example_idx = random.randint(0, inputs.size(0) - 1)
