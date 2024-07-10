@@ -1,4 +1,7 @@
 """
+Usage Example:
+
+    python src/train_v2.py --data_dir /media/tiagociiic/easystore/COCO_dataset --num_epochs_seg 2 --num_epochs_inpaint 0 --batch_size 2  --log_interval 1000 --selected_classes 1 72 73 77
 
 """
 
@@ -30,6 +33,7 @@ from model import InpainTor
 from losses import SegmentationLoss, InpaintingLoss
 from visualizations import save_train_images, plot_training_log
 from dataset import COCOSegmentationDataset
+from torch.optim import Optimizer
 
 loguru.logger.remove()
 log_file = f"logs/train_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
@@ -37,7 +41,7 @@ loguru.logger.add(log_file, rotation="10 MB")
 
 
 class Trainer:
-    def __init__(self, model_: Module, seg_loss: callable, inpaint_loss: callable, optimizer_: optim.Optimizer,
+    def __init__(self, model_: Module, seg_loss: callable, inpaint_loss: callable, optimizer_: Optimizer,
                  device_: torch.device, seg_train_loader: DataLoader, seg_val_loader: DataLoader,
                  inpaint_train_loader: DataLoader, inpaint_val_loader: DataLoader, model_name: str,
                  log_interval: int, scheduler_: ReduceLROnPlateau):
@@ -65,13 +69,13 @@ class Trainer:
 
     def train_segmentation(self, num_epochs_seg: int):
         self.model.freeze_generator()
-        self.model.unfreeze_segmenter()
+        self.model.unfreeze_encoder_and_segmentor()
         self.train_phase(num_epochs_seg, "segmentation", self.seg_train_loader, self.seg_val_loader)
-        self.model.save_segmenter("checkpoints/segmenter_checkpoint.pth")
+        self.model.save_encoder_and_segmentor("checkpoints/encoder_segmentor_checkpoint.pth")
 
     def train_inpainting(self, num_epochs_inpaint: int):
-        self.model.load_segmenter("checkpoints/segmenter_checkpoint.pth")
-        self.model.freeze_segmenter()
+        self.model.load_encoder_and_segmentor("checkpoints/encoder_segmentor_checkpoint.pth")
+        self.model.freeze_encoder_and_segmentor()
         self.model.unfreeze_generator()
         self.train_phase(num_epochs_inpaint, "inpainting", self.inpaint_train_loader, self.inpaint_val_loader)
 
@@ -85,11 +89,7 @@ class Trainer:
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
                 best_model_path = self.save_best_model(phase)
-                self.logger.info(f'Saving best {phase} model_ to {best_model_path}')
-
-    # TODO: Change and test the dataset classes
-    # TODO: Choose the right classes for inpainting
-    # TODO: Choose only 7 classes for segmentation: person, car, motorcycle, laptop, cell phone, book, television
+                self.logger.info(f'Saving best {phase} model to {best_model_path}')
 
     def train_epoch(self, epoch: int, phase: str, data_loader: DataLoader) -> float:
         self.model.train()
@@ -97,12 +97,19 @@ class Trainer:
         with tqdm(data_loader, desc=f'Epoch {epoch + 1} - {phase.capitalize()} Training', unit_scale=True,
                   colour='green') as pbar:
             for batch_idx, batch in enumerate(pbar):
+                if batch is None:
+                    print(f"Skipping empty batch at index {batch_idx}")
+                    continue
                 images = batch['image'].to(self.device)
                 masks = batch['mask'].to(self.device) if phase == "segmentation" else batch['gt'].to(self.device)
                 self.optimizer.zero_grad()
                 output = self.model(images)
-                loss = self.seg_loss(output['mask'], masks) if phase == "segmentation" else self.inpaint_loss(
-                    output['inpainted_image'], masks)
+                if phase == "segmentation":
+                    # masks = torch.argmax(masks, dim=1)  # Convert masks to class indices
+                    # print(f"masks.shape: {masks.shape},max: {masks.max()}, min: {masks.min()}")
+                    loss = self.seg_loss(output['mask'], masks)
+                else:
+                    loss = self.inpaint_loss(output['inpainted_image'], masks)
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
@@ -126,11 +133,17 @@ class Trainer:
             with tqdm(data_loader, desc=f'Epoch {epoch + 1} - {phase.capitalize()} Validation', unit_scale=True,
                       colour='blue') as pbar:
                 for batch_idx, batch in enumerate(pbar):
+                    if batch is None:
+                        print(f"Skipping empty batch at index {batch_idx}")
+                        continue
                     images = batch['image'].to(self.device)
                     masks = batch['mask'].to(self.device) if phase == "segmentation" else batch['gt'].to(self.device)
                     output = self.model(images)
-                    loss = self.seg_loss(output['mask'], masks) if phase == "segmentation" else self.inpaint_loss(
-                        output['inpainted_image'], masks)
+                    if phase == "segmentation":
+                        # masks = torch.argmax(masks, dim=1)  # Convert masks to class indices
+                        loss = self.seg_loss(output['mask'], masks)
+                    else:
+                        loss = self.inpaint_loss(output['inpainted_image'], masks)
                     total_val_loss += loss.item()
 
                     if self.global_step % self.log_interval == 0:
@@ -169,10 +182,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--debug', action='store_true', default=False, help='Debug mode')
     parser.add_argument('--log_interval', type=int, default=1000, help='Log interval for training')
     parser.add_argument('--find_lr', action='store_true', help='Run learning rate finder')
-    parser.add_argument('--selected_classes', type=int, nargs='+', default=[0],
+    parser.add_argument('--selected_classes', type=int, nargs='+', default=[1, 72, 73, 77],
                         help='List of classes IDs for inpainting (default: person)')
 
     return parser.parse_args()
+
+
+def collate_fn(batch):
+    # Filter out None values
+    batch = list(filter(lambda x: x is not None, batch))
+
+    # If the batch is empty after filtering, return None
+    if len(batch) == 0:
+        return None
+
+    # Use the default collate function for the remaining items
+    return torch.utils.data.dataloader.default_collate(batch)
 
 
 if __name__ == '__main__':
@@ -180,21 +205,29 @@ if __name__ == '__main__':
 
     if args.debug:
         train_dataset = dataset.COCOSegmentationDataset(root_dir=args.data_dir, split='debug', year='2017',
-                                                        image_size=(args.image_size, args.image_size))
+                                                        image_size=(args.image_size, args.image_size),
+                                                        mask_size=(args.mask_size, args.mask_size),
+                                                        selected_class_ids=args.selected_classes)
         val_dataset = COCOSegmentationDataset(root_dir=args.data_dir, split='debug', year='2017',
-                                              image_size=(args.image_size, args.image_size))
+                                              image_size=(args.image_size, args.image_size),
+                                              mask_size=(args.mask_size, args.mask_size),
+                                              selected_class_ids=args.selected_classes)
         print("Debug mode enabled. Using debug dataset.")
     else:
         train_dataset = dataset.COCOSegmentationDataset(root_dir=args.data_dir, split='train', year='2017',
-                                                        image_size=(args.image_size, args.image_size))
+                                                        image_size=(args.image_size, args.image_size),
+                                                        mask_size=(args.mask_size, args.mask_size),
+                                                        selected_class_ids=args.selected_classes)
         val_dataset = COCOSegmentationDataset(root_dir=args.data_dir, split='val', year='2017',
-                                              image_size=(args.image_size, args.image_size))
+                                              image_size=(args.image_size, args.image_size),
+                                              mask_size=(args.mask_size, args.mask_size),
+                                              selected_class_ids=args.selected_classes)
 
     loguru.logger.info(f'Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}')
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
 
-    model = InpainTor(num_classes=80, selected_classes=[0])
+    model = InpainTor(selected_classes=args.selected_classes)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
