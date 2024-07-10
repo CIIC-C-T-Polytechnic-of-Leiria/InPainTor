@@ -1,12 +1,9 @@
 import datetime
 import os
-import random
 import re
 
 import imageio.v2 as imageio
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -132,15 +129,30 @@ def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
     grid_image.save(os.path.join(output_path, f"grid_image_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"))
 
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+
+
+def denormalize(image: np.ndarray, mean: list, std: list) -> np.ndarray:
+    mean = np.array(mean).reshape(1, 1, 3)
+    std = np.array(std).reshape(1, 1, 3)
+    image = image * std + mean
+    return np.clip(image, 0, 1)
+
+
 def save_train_images(step: int,
                       inputs: torch.Tensor,
                       seg_target: torch.Tensor,
                       inpaint_target: torch.Tensor,
                       outputs: dict,
-                      # masked_input: torch.Tensor,
+                      phase: str,
                       is_validation: bool = False,
                       save_path: str = 'logs/images',
-                      random_index: bool = False) -> None:
+                      selected_classes: list = None,
+                      mean: list = [0.485, 0.456, 0.406],
+                      std: list = [0.229, 0.224, 0.225]) -> None:
     """
     Save a grid of images for visualization during training or validation.
 
@@ -148,28 +160,24 @@ def save_train_images(step: int,
         step (int): The current training step.
         inputs (torch.Tensor): The input images.
         seg_target (torch.Tensor): The segmentation target.
-        inpaint_target (torch.Tensor): The inpainting target.
-        outputs (dict): The model_ outputs.
-        masked_input (torch.Tensor): The masked input images.
+        inpaint_target (torch.Tensor): The inpainting target (can be None for segmentation phase).
+        outputs (dict): The model outputs.
+        phase (str): The current training phase ('segmentation' or 'inpainting').
         is_validation (bool): Whether the images are from the validation set.
         save_path (str): The directory to save the images.
-        random_index (bool): Whether to select a random index from the batch.
-
+        selected_classes (list): List of selected class indices for visualization.
+        mean (list): Mean values used for normalization.
+        std (list): Standard deviation values used for normalization.
     """
 
-    # Select one or two examples from the batch
-    if random_index:
-        example_idx = random.randint(0, inputs.size(0) - 1)
-    else:
-        example_idx = 0
+    # Ensure we're working with the first image in the batch
+    example_idx = 0
 
+    # Process input image
     input_image = inputs[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
-    inpaint_target_image = inpaint_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
-    output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
-    output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy()
-    # masked_input_image = masked_input[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
+    input_image = denormalize(input_image, mean, std)  # Denormalize
 
-    # Handle seg_target based on its shape
+    # Process segmentation target
     if seg_target.dim() == 3:  # If it's [B, H, W]
         seg_target_image = seg_target[example_idx].cpu().detach().numpy()
     elif seg_target.dim() == 4:  # If it's [B, C, H, W]
@@ -177,48 +185,77 @@ def save_train_images(step: int,
     else:
         raise ValueError(f"Unexpected shape for seg_target: {seg_target.shape}")
 
-    # Convert numpy arrays back to tensors
-    input_tensor = torch.from_numpy(input_image)
-    inpaint_target_tensor = torch.from_numpy(inpaint_target_image)
-    output_tensor = torch.from_numpy(output_image).permute(1, 2, 0)
-    # masked_input_tensor = torch.from_numpy(masked_input_image)
+    # print(
+    #     f"Segmentation target shape: {seg_target_image.shape}, Segmentation target min: {seg_target_image.min()}, Segmentation target max: {seg_target_image.max()}")
 
-    # Convert the tensor to float32 and normalize it to the range [0, 1]
-    input_tensor = input_tensor.float()
-    inpaint_target_tensor = inpaint_target_tensor.float()
-    output_tensor = output_tensor.float()
-    # masked_input_tensor = masked_input_tensor.float()
+    # Process output mask
+    output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
+    # print(
+    #     f"Output mask shape: {output_mask.shape}, Output mask min: {output_mask.min()}, Output mask max: {output_mask.max()}")
+    #
+    # # Print statistics for each channel of the output mask
+    # for i in range(output_mask.shape[0]):
+    #     print(f"Channel {i} - min: {output_mask[i].min()}, max: {output_mask[i].max()}, mean: {output_mask[i].mean()}")
 
-    # Guarantee that the values are in the [0, 1] range
-    input_tensor = torch.clamp(input_tensor, min=0, max=1)
-    inpaint_target_tensor = torch.clamp(inpaint_target_tensor, min=0, max=1)
-    output_tensor = torch.clamp(output_tensor, min=0, max=1)
-    # masked_input_tensor = torch.clamp(masked_input_tensor, min=0, max=1)
+    # Convert output mask to categorical if necessary
+    if output_mask.ndim == 3 and output_mask.shape[0] > 1:
+        output_mask_arg = np.argmax(output_mask, axis=0)
 
-    # Create a grid of images
-    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(23, 13))
+    # Create a composite image for segmentation target and output mask
+    if selected_classes is None:
+        selected_classes = range(seg_target_image.shape[-1] if seg_target_image.ndim == 3 else 1)
 
-    # Add images to subplots
-    axs[0, 0].imshow(input_tensor)
+    seg_target_composite = np.zeros((*seg_target_image.shape[:2], 3))
+    output_mask_composite = np.zeros((*output_mask_arg.shape[:2], 3))
+
+    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(selected_classes)))[:, :3]
+
+    for i, class_idx in enumerate(selected_classes):
+        if seg_target_image.ndim == 3:
+            seg_target_composite += np.expand_dims(seg_target_image[..., class_idx], axis=-1) * colors[i]
+        else:
+            seg_target_composite += np.expand_dims(seg_target_image, axis=-1) * colors[i]
+
+        output_mask_composite[output_mask_arg == class_idx] = colors[i]
+
+    seg_target_composite = np.clip(seg_target_composite, 0, 1)  # Normalize to [0, 1]
+    output_mask_composite = np.clip(output_mask_composite, 0, 1)  # Normalize to [0, 1]
+
+    # Handle inpainting images
+    if phase == 'inpainting' and inpaint_target is not None:
+        inpaint_target_image = inpaint_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
+        inpaint_target_image = denormalize(inpaint_target_image, mean, std)  # Denormalize
+        inpaint_output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy().transpose(1, 2, 0)
+        inpaint_output_image = denormalize(inpaint_output_image, mean, std)  # Denormalize
+    else:
+        inpaint_target_image = np.zeros_like(input_image)
+        inpaint_output_image = np.zeros_like(input_image)
+
+    # Create the figure
+    fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(30, 15))
+
+    # First row
+    axs[0, 0].imshow(input_image)
     axs[0, 0].set_title('Input Image')
-    axs[0, 1].imshow(inpaint_target_tensor)
-    axs[0, 1].set_title('Inpaint Target')
-    axs[0, 2].imshow(output_tensor)
-    axs[0, 2].set_title('Output Image')
-    axs[1, 0].imshow(seg_target_image.squeeze(), cmap='gray')
-    axs[1, 0].set_title('Segmentation Target')
+    axs[0, 1].imshow(seg_target_composite)
+    axs[0, 1].set_title('Segmentation Target')
+    axs[0, 2].imshow(output_mask_composite)
+    axs[0, 2].set_title('Output Mask Composite')
 
-    # Handle output_mask - show first channel and masked_input
-    axs[1, 1].imshow(output_mask[0], cmap='gray')
-    axs[1, 1].set_title('Output Mask (Channel 0: Person)')
-    axs[1, 2].imshow(output_mask[1], cmap='gray')
-    axs[1, 2].set_title('Output Mask (Channel 1)')
+    # Second row - show individual channels of the output mask
+    for i in range(output_mask.shape[0]):
+        print(f"output_mask.shape[0] {output_mask.shape[0]}, output_mask.shape {output_mask.shape}")
+        axs[1, i].imshow(output_mask[i], cmap='gray')
+        axs[1, i].set_title(f'Output Mask Channel {i}')
+
+    # Adjust layout and save
+    plt.tight_layout()
 
     # Create directory for saving images
     prefix = "val" if is_validation else "train"
-    save_dir = os.path.join(save_path, prefix + "_images")
+    save_dir = os.path.join(save_path, f"{prefix}_{phase}_images")
     os.makedirs(save_dir, exist_ok=True)
 
     # Save the figure to a file
-    plt.savefig(os.path.join(save_dir, f'grid_image_step_{step}.png'), bbox_inches='tight', dpi=300)
+    plt.savefig(os.path.join(save_dir, f'{phase}_grid_image_step_{step}.png'), bbox_inches='tight', dpi=300)
     plt.close(fig)
