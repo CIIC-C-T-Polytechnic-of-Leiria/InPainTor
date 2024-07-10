@@ -12,6 +12,12 @@ class SegmentationLoss(nn.Module):
         self.dice_loss = DiceLoss()
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # Verificar se target é um tensor de índices
+        if target.dim() == 4:
+            target = torch.argmax(target, dim=1)
+        if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
+            raise ValueError("Valores em target estão fora do intervalo esperado")
+
         ce_loss = self.ce_loss(pred, target)
         dice_loss = self.dice_loss(pred, target)
         return self.ce_weight * ce_loss + self.dice_weight * dice_loss
@@ -23,6 +29,12 @@ class DiceLoss(nn.Module):
         self.smooth = smooth
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # Verificar se target é um tensor de índices
+        if target.dim() == 4:
+            target = torch.argmax(target, dim=1)
+        if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
+            raise ValueError("Valores em target estão fora do intervalo esperado")
+
         pred = F.softmax(pred, dim=1)
         target_one_hot = F.one_hot(target, num_classes=pred.shape[1]).permute(0, 3, 1, 2).float()
 
@@ -31,6 +43,46 @@ class DiceLoss(nn.Module):
 
         dice = (2. * intersection + self.smooth) / (union + self.smooth)
         return 1 - dice.mean()
+
+
+# class SegmentationLoss(nn.Module):
+#     def __init__(self, ce_weight=0.5, dice_weight=0.5):
+#         super(SegmentationLoss, self).__init__()
+#         self.ce_weight = ce_weight
+#         self.dice_weight = dice_weight
+#         self.ce_loss = nn.CrossEntropyLoss()
+#         self.dice_loss = DiceLoss()
+#
+#     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+#         with torch.no_grad():
+#             # print(f"Pred shape: {pred.shape}, Target shape: {target.shape}")
+#             if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
+#                 raise ValueError("Values in target are out of expected range")
+#
+#         ce_loss = self.ce_loss(pred, target)
+#         dice_loss = self.dice_loss(pred, target)
+#         return self.ce_weight * ce_loss + self.dice_weight * dice_loss
+#
+#
+# class DiceLoss(nn.Module):
+#     def __init__(self, smooth=1.0):
+#         super(DiceLoss, self).__init__()
+#         self.smooth = smooth
+#
+#     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+#         with torch.no_grad():
+#             # print(f"Pred shape: {pred.shape}, Target shape: {target.shape}")
+#             if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
+#                 raise ValueError("Values in target are out of expected range")
+#
+#         pred = F.softmax(pred, dim=1)
+#         target_one_hot = F.one_hot(target, num_classes=pred.shape[1]).permute(0, 3, 1, 2).float()
+#
+#         intersection = (pred * target_one_hot).sum(dim=(2, 3))
+#         union = pred.sum(dim=(2, 3)) + target_one_hot.sum(dim=(2, 3))
+#
+#         dice = (2. * intersection + self.smooth) / (union + self.smooth)
+#         return 1 - dice.mean()
 
 
 # TODO: Add PerceptualLoss to the InpaintingLoss

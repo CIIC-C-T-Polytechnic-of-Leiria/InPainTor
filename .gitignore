@@ -145,9 +145,3 @@ outputs/CamVid
 
 logs/images/
 outputs/debug/
-
-test2017.zip
-train2017.zip
-val2017.zip
-annotations_trainval2017.zip
-wget-log

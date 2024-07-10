@@ -191,46 +191,81 @@ class AttentionBlock(nn.Module):
         return filtered_features
 
 
-class ClassesToMask(nn.Module):
-    """
-    Convert a multi-class segmentation map to a binary mask for a subset of classes.
-
-    Args:
-        num_classes: The total number of classes in the segmentation map.
-        class_ids: A list of class IDs to include in the mask.
-        threshold: The threshold value to use for binarizing the mask.
-        use_threshold: A boolean indicating whether to apply thresholding.
-
-    Returns:
-        A binary mask tensor of shape NxHxW, where 0 indicates the presence of an object
-        and 1 indicates the absence of an object.
-    """
-
-    def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
-        super(ClassesToMask, self).__init__()
-        self.num_classes = num_classes
+class ClassesToMask_v2(nn.Module):
+    def __init__(self, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
+        super(ClassesToMask_v2, self).__init__()
+        self.num_classes = len(class_ids)
         self.class_ids = class_ids
         self.threshold = threshold
         self.use_threshold = use_threshold
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: NxCxHxW tensor, where N is the batch size, C is the number of classes,
-            H and W are the height and width of the segmentation maps.
+        # print(f"ClassesToMask_v2 input shape: {x.shape}")
 
-        Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
-                 and 1 indicates the absence of an object.
-        """
-        x = x[:, self.class_ids, :, :]
+        # Ensure class_ids are within bounds
+        valid_class_ids = [i for i in self.class_ids if i < x.shape[1]]
+        if len(valid_class_ids) == 0:
+            raise ValueError(f"No valid class_ids. Input has {x.shape[1]} channels, but class_ids are {self.class_ids}")
+
+        # Select only the channels corresponding to the valid class_ids
+        x = x[:, valid_class_ids, :, :]
+
+        # Apply sigmoid to convert logits to probabilities
         probs = torch.sigmoid(x)
+
+        # Get the maximum probability across all classes
         max_probs, _ = torch.max(probs, dim=1, keepdim=True)
 
         if self.use_threshold:
+            # Apply threshold to create binary mask
             mask = (max_probs > self.threshold).float()
         else:
+            # Use probability values as mask
             mask = max_probs
 
         return mask
+
+
+# class ClassesToMask(nn.Module):
+#     """
+#     Convert a multi-class segmentation map to a binary mask for a subset of classes.
+#
+#     Args:
+#         num_classes: The total number of classes in the segmentation map.
+#         class_ids: A list of class IDs to include in the mask.
+#         threshold: The threshold value to use for binarizing the mask.
+#         use_threshold: A boolean indicating whether to apply thresholding.
+#
+#     Returns:
+#         A binary mask tensor of shape NxHxW, where 0 indicates the presence of an object
+#         and 1 indicates the absence of an object.
+#     """
+#
+#     def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
+#         super(ClassesToMask, self).__init__()
+#         self.num_classes = num_classes
+#         self.class_ids = class_ids
+#         self.threshold = threshold
+#         self.use_threshold = use_threshold
+#
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         """
+#         x: NxCxHxW tensor, where N is the batch size, C is the number of classes,
+#             H and W are the height and width of the segmentation maps.
+#
+#         Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
+#                  and 1 indicates the absence of an object.
+#         """
+#         x = x[:, self.class_ids, :, :]
+#         probs = torch.sigmoid(x)
+#         max_probs, _ = torch.max(probs, dim=1, keepdim=True)
+#
+#         if self.use_threshold:
+#             mask = (max_probs > self.threshold).float()
+#         else:
+#             mask = max_probs
+#
+#         return mask
 
 
 class AveragePool2d(nn.Module):

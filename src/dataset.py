@@ -1,23 +1,24 @@
 import json
+import logging
 import os
 from glob import glob
 
 import numpy as np
 import torch
 import torchvision.transforms as transforms
-import yaml
+import torchvision.transforms.functional as F
 from PIL import Image
 from loguru import logger
 from pycocotools.coco import COCO
 from torch.utils.data import Dataset
 from torchvision import datasets
-from torchvision.transforms import functional as F
 
-with open('../environment.yml', 'r') as f:
-    config = yaml.safe_load(f)
 
-coco_img_mean = config['vars']['COCO_IMG_MEAN']
-coco_img_std = config['vars']['COCO_IMG_STD']
+# with open('../environment.yml', 'r') as f:
+#     config = yaml.safe_load(f)
+#
+# coco_img_mean = config['vars']['COCO_IMG_MEAN']
+# coco_img_std = config['vars']['COCO_IMG_STD']
 
 
 class CamVidDataset(Dataset):
@@ -186,51 +187,37 @@ class RORDInpaintingDataset(Dataset):
 
 
 class COCOSegmentationDataset(Dataset):
-    """
-    COCO dataset for semantic segmentation with 80 classes.
-
-    Args:
-        root_dir (str): Root directory of the COCO dataset.
-        split (str): Split of the dataset, either 'train' or 'val'.
-        year (str): Year of the COCO dataset, e.g., '2017'.
-        image_size (tuple): Size of the images and masks (height, width).
-        transform (callable, optional): Optional transform to be applied on the image.
-        selected_class_ids (list, optional): List of class IDs to include.
-
-    Returns:
-        dict: Dictionary containing the image and segmentation mask.
-    """
-
-    def __init__(self, root_dir: str, split: str, year: str, image_size: tuple, transform=None,
+    def __init__(self, root_dir: str, split: str, year: str, image_size: tuple, mask_size: tuple, transform=None,
                  selected_class_ids=None):
         self.root_dir = root_dir
         self.split = split
         self.year = year
         self.image_size = image_size
+        self.mask_size = mask_size
         self.transform = transform
 
         ann_file = os.path.join(root_dir, f'annotations/instances_{split}{year}.json')
         assert os.path.exists(ann_file), f'Annotation file not found at {ann_file}'
         self.coco = COCO(ann_file)
-        print(f'cocodataset: {self.coco}')
-        self.image_ids = list(self.coco.imgs.keys())
-
-        # Filter out images without annotations
-        self.image_ids = [img_id for img_id in self.image_ids if
-                          len(self.coco.getAnnIds(imgIds=img_id, iscrowd=False)) > 0]
 
         self.cat_ids = self.coco.getCatIds()
         self.categories = self.coco.loadCats(self.cat_ids)
         self.categories.sort(key=lambda x: x['id'])
 
-        # Filter categories based on selected_class_ids
-        if selected_class_ids:
-            self.selected_class_ids = selected_class_ids
-        else:
-            self.selected_class_ids = self.cat_ids
+        self.selected_class_ids = selected_class_ids if selected_class_ids else self.cat_ids
+        self.num_classes = len(self.selected_class_ids)
 
-        # Create a mapping from COCO category ID to our class index (1-indexed)
-        self.cat_id_to_class_idx = {cat_id: idx + 1 for idx, cat_id in enumerate(self.selected_class_ids)}
+        self.cat_id_to_class_idx = {cat_id: idx for idx, cat_id in enumerate(self.selected_class_ids)}
+
+        self.image_ids = []
+        for img_id in self.coco.imgs.keys():
+            ann_ids = self.coco.getAnnIds(imgIds=img_id, catIds=self.selected_class_ids, iscrowd=False)
+            if len(ann_ids) > 0:
+                self.image_ids.append(img_id)
+
+        # Set up logging
+        logging.basicConfig(level=logging.WARNING)
+        self.logger = logging.getLogger(__name__)
 
     def __len__(self):
         return len(self.image_ids)
@@ -239,54 +226,64 @@ class COCOSegmentationDataset(Dataset):
         img_id = self.image_ids[idx]
         img_info = self.coco.loadImgs(img_id)[0]
 
-        # Load image
         img_path = os.path.join(self.root_dir, f'{self.split}{self.year}', img_info['file_name'])
-        image = Image.open(img_path).convert('RGB')
 
-        # Create empty mask
-        mask = np.zeros((len(self.selected_class_ids), img_info['height'], img_info['width']), dtype=np.uint8)
+        # Check if image file exists
+        if not os.path.exists(img_path):
+            self.logger.warning(f"Image file not found: {img_path}")
+            return None
 
-        # Load annotations
-        ann_ids = self.coco.getAnnIds(imgIds=img_id, iscrowd=False)
+        try:
+            image = Image.open(img_path).convert('RGB')  # Dimension: (C=3, H, W)
+        except IOError:
+            self.logger.warning(f"Unable to open image file: {img_path}")
+            return None
+
+        # Initialize multichannel mask
+        mask = np.zeros((self.num_classes, img_info['height'], img_info['width']),
+                        dtype=np.float32)  # Dimension: (num_classes, H, W)
+
+        ann_ids = self.coco.getAnnIds(imgIds=img_id, catIds=self.selected_class_ids, iscrowd=False)
         anns = self.coco.loadAnns(ann_ids)
 
-        # Fill mask with class indices
+        if not anns:
+            self.logger.warning(f"No annotations found for image: {img_path}")
+            return None
+
         for ann in anns:
-            if ann['category_id'] in self.selected_class_ids:
-                class_idx = self.cat_id_to_class_idx[ann['category_id']] - 1  # Convert to 0-indexed
-                pixel_mask = self.coco.annToMask(ann)
-                mask[class_idx][pixel_mask == 1] = 1
+            class_idx = self.cat_id_to_class_idx[ann['category_id']]
+            pixel_mask = self.coco.annToMask(ann)
+            mask[class_idx, pixel_mask == 1] = 1.0  # Update mask with class IDs
 
-        # Convert to PIL Images for transformation
-        mask = Image.fromarray(mask.transpose(1, 2, 0))  # Convert to H, W, C for PIL
-
-        # Apply transformations
-        image, mask = self.transform_data(image, mask)
+        image, mask = self.transform_data(image, mask)  # Resize and transform to tensor
 
         return {'image': image, 'mask': mask}
 
     def transform_data(self, image, mask):
-        # Resize
-        image = F.resize(image, self.image_size, interpolation=F.InterpolationMode.BILINEAR)
-        mask = F.resize(mask, self.image_size, interpolation=F.InterpolationMode.NEAREST)
+        # Resize image
+        image = F.resize(image, self.image_size, interpolation=F.InterpolationMode.BILINEAR)  # Dimension: (C=3, H', W')
 
-        # Random horizontal flip
-        if torch.rand(1) < 0.5:
-            image = F.hflip(image)
-            mask = F.hflip(mask)
+        # Resize mask for each class
+        mask = torch.as_tensor(mask, dtype=torch.float32)  # Convert to float tensor
+        resized_mask = torch.zeros((self.num_classes, *self.mask_size),
+                                   dtype=torch.float32)  # Initialize resized mask
 
-        # Convert to tensor
-        image = F.to_tensor(image)
-        mask = torch.as_tensor(np.array(mask).transpose(2, 0, 1), dtype=torch.int64)
+        for i in range(self.num_classes):
+            mask_channel = Image.fromarray(mask[i].numpy())
+            resized_mask[i] = F.to_tensor(
+                F.resize(mask_channel, self.mask_size, interpolation=F.InterpolationMode.NEAREST))
+
+        # Convert image to tensor
+        image = F.to_tensor(image)  # Dimension: (C=3, H', W')
 
         # Normalize image
-        image = F.normalize(image, mean=coco_img_mean, std=coco_img_std)
+        image = F.normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Dimension: (C=3, H', W')
 
-        # Apply additional transforms if specified
+        # Apply additional transformations if specified
         if self.transform:
             image = self.transform(image)
 
-        return image, mask
+        return image, resized_mask
 
     def get_class_names(self):
         return [self.coco.loadCats([cat_id])[0]['name'] for cat_id in self.selected_class_ids]
