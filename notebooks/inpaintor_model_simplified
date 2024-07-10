@@ -1,0 +1,16 @@
+// InpainTor Simplificado
+digraph {
+	A [label="Input Image
+(3, 512, 512)"]
+	B [label=SharedEncoder]
+	C [label=SegmentorDecoder]
+	D [label=GenerativeDecoder]
+	E [label="Mask Out"]
+	F [label="Inpainted Image"]
+	A -> B
+	B -> C
+	B -> D
+	C -> E
+	C -> D
+	D -> F
+}
