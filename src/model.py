@@ -6,11 +6,13 @@ from torch import cat
 from torch.nn import Module
 from torchvision.utils import save_image
 
-from layers import AttentionBlock, AveragePool2d, LogSoftmax, ClassesToMask
+from layers import AttentionBlock, AveragePool2d, Softmax
+from layers import ClassesToMask_v2
 from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D
 
 
 # TODO: Substituir Conv2D por ResidualConv2D? - Todo later...
+
 
 class SharedEncoder(Module):
     def __init__(self, input_size: int = 512, base_chs: int = 16):
@@ -36,7 +38,8 @@ class SegmentorDecoder(Module):
         self.conv_transp_block2 = SepConvTranspBlock(in_channels=base_chs * 24, out_channels=base_chs * 8)
         self.conv_transp_block3 = SepConvTranspBlock(in_channels=base_chs * 12, out_channels=base_chs * 4)
         self.conv1x1 = Conv1x1(in_channels=base_chs * 4, out_channels=num_classes, stride=1, activation=None)
-        self.log_softmax = LogSoftmax(dim=1)
+        # self.log_softmax = LogSoftmax(dim=1)
+        self.log_softmax = Softmax(dim=1)
 
     def forward(self, enc4, enc3, enc2):
         seg1 = self.conv_transp_block1(enc4)
@@ -50,9 +53,10 @@ class SegmentorDecoder(Module):
 
 
 class GenerativeDecoder(Module):
-    def __init__(self, selected_classes: List[int], base_chs: int = 16, num_classes: int = 80):
+    def __init__(self, selected_classes: List[int], base_chs: int = 16):
         super(GenerativeDecoder, self).__init__()
-        self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes, use_threshold=True)
+        # self.class_selector = ClassesToMask(num_classes=num_classes, class_ids=selected_classes, use_threshold=True)
+        self.class_selector = ClassesToMask_v2(class_ids=selected_classes, use_threshold=True)
         self.conv_transp_block1 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 16)
         self.conv_transp_block2 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 8)
         self.conv_transp_block3 = SepConvTranspBlock(in_channels=base_chs * 16, out_channels=base_chs * 8)
@@ -76,11 +80,24 @@ class GenerativeDecoder(Module):
     def forward(self, input_image, enc4, classes_out, seg2, seg3):
         self.counter += 1
         input_small = self.average_pool(input_image)
+
+        # print(f"GenerativeDecoder - input_image shape: {input_image.shape}")
+        # print(f"GenerativeDecoder - classes_out shape: {classes_out.shape}")
+        # print(f"GenerativeDecoder - enc4 shape: {enc4.shape}")
+        # print(f"GenerativeDecoder - seg2 shape: {seg2.shape}")
+        # print(f"GenerativeDecoder - seg3 shape: {seg3.shape}")
+
         masked_out = self.class_selector(classes_out)
+
+        # print(f"GenerativeDecoder - masked_out shape: {masked_out.shape}")
+
+        # masked_input = input_small * masked_out
         masked_input = input_small * masked_out
 
-        if self.counter % 10 == 0:
-            self.save_mask(masked_input, self.counter, name="masked_input")
+        # print(f"GenerativeDecoder - masked_input shape: {masked_input.shape}")
+
+        # if self.counter % 10 == 0:
+        #     self.save_mask(masked_input, self.counter, name="masked_input")
 
         attention1 = self.attention_block1(seg2)
         attention2 = self.attention_block2(seg3)
@@ -100,12 +117,11 @@ class GenerativeDecoder(Module):
 
 
 class InpainTor(Module):
-    def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
+    def __init__(self, selected_classes: List[int] = [0], base_chs: int = 16):
         super().__init__()
         self.shared_encoder = SharedEncoder()
-        self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes)
-        self.generative_decoder = GenerativeDecoder(base_chs=base_chs, num_classes=num_classes,
-                                                    selected_classes=selected_classes)
+        self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=len(selected_classes))
+        self.generative_decoder = GenerativeDecoder(base_chs=base_chs, selected_classes=selected_classes)
 
     def forward(self, x):
         _, enc2, enc3, enc4 = self.shared_encoder(x)
@@ -113,13 +129,13 @@ class InpainTor(Module):
         out_gen = self.generative_decoder(x, enc4, masked_out, seg2, seg3)
         return {'mask': masked_out, 'inpainted_image': out_gen}
 
-    def freeze_segmentor(self):
+    def freeze_encoder_and_segmentor(self):
         for param in self.shared_encoder.parameters():
             param.requires_grad = False
         for param in self.segment_decoder.parameters():
             param.requires_grad = False
 
-    def unfreeze_segmentor(self):
+    def unfreeze_encoder_and_segmentor(self):
         for param in self.shared_encoder.parameters():
             param.requires_grad = True
         for param in self.segment_decoder.parameters():
@@ -133,13 +149,13 @@ class InpainTor(Module):
         for param in self.generative_decoder.parameters():
             param.requires_grad = True
 
-    def save_segmentor(self, path):
+    def save_encoder_and_segmentor(self, path):
         torch.save({
             'shared_encoder': self.shared_encoder.state_dict(),
             'segment_decoder': self.segment_decoder.state_dict(),
         }, path)
 
-    def load_segmentor(self, path):
+    def load_encoder_and_segmentor(self, path):
         checkpoint = torch.load(path)
         self.shared_encoder.load_state_dict(checkpoint['shared_encoder'])
         self.segment_decoder.load_state_dict(checkpoint['segment_decoder'])
@@ -155,30 +171,3 @@ class InpainTor(Module):
 
     def load_full_model(self, path):
         self.load_state_dict(torch.load(path))
-
-# class InpainTor(Module):
-#     """
-#     InpainTor: A Generative model_ for segmentation based inpainting.
-#
-#     Args:
-#         num_classes (int): Number of classes in the dataset (defaults to COCO dataset classes: 80).
-#         selected_classes (List[int]): List of selected classes for segmentation (defaults to [0]: person).
-#         base_chs (int): Base number of channels for the model_ (defaults to 16).
-#
-#     Returns:
-#         dict: Dictionary containing the mask and inpainted image.
-#     """
-#
-#     def __init__(self, num_classes: int = 80, selected_classes: List[int] = [0], base_chs: int = 16):
-#         super().__init__()  # Call the parent class's __init__ method
-#         self.shared_encoder = SharedEncoder()
-#         self.segment_decoder = SegmentorDecoder(in_channels=base_chs * 16, num_classes=num_classes)
-#         # selected_classes=selected_classes
-#         self.generative_decoder = GenerativeDecoder(base_chs=base_chs, num_classes=num_classes,
-#                                                     selected_classes=selected_classes)
-#
-#     def forward(self, x):
-#         _, enc2, enc3, enc4 = self.shared_encoder(x)
-#         masked_out, seg2, seg3 = self.segment_decoder(enc4, enc3, enc2)
-#         out_gen = self.generative_decoder(x, enc4, masked_out, seg2, seg3)
-#         return {'mask': masked_out, 'inpainted_image': out_gen}
