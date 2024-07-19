@@ -6,9 +6,9 @@ from torch import cat
 from torch.nn import Module
 from torchvision.utils import save_image
 
-from layers import AttentionBlock, AveragePool2d, Softmax
+from layers import AttentionBlock, AveragePool2d
 from layers import ClassesToMask_v2
-from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D
+from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D, Sigmoid
 
 
 # TODO: Substituir Conv2D por ResidualConv2D? - Todo later...
@@ -39,7 +39,8 @@ class SegmentorDecoder(Module):
         self.conv_transp_block3 = SepConvTranspBlock(in_channels=base_chs * 12, out_channels=base_chs * 4)
         self.conv1x1 = Conv1x1(in_channels=base_chs * 4, out_channels=num_classes, stride=1, activation=None)
         # self.log_softmax = LogSoftmax(dim=1)
-        self.log_softmax = Softmax(dim=1)
+        # self.log_softmax = Softmax(dim=1)
+        self.sigmoid = Sigmoid()
 
     def forward(self, enc4, enc3, enc2):
         seg1 = self.conv_transp_block1(enc4)
@@ -48,7 +49,8 @@ class SegmentorDecoder(Module):
         seg_cat2 = cat([seg2, enc2], dim=1)
         seg3 = self.conv_transp_block3(seg_cat2)
         seg_out = self.conv1x1(seg3)
-        classes_out = self.log_softmax(seg_out)
+        # classes_out = self.log_softmax(seg_out)
+        classes_out = self.sigmoid(seg_out)
         return classes_out, seg2, seg3
 
 
