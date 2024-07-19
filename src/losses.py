@@ -1,49 +1,117 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-
-class SegmentationLoss(nn.Module):
-    def __init__(self, ce_weight=0.5, dice_weight=0.5):
-        super(SegmentationLoss, self).__init__()
-        self.ce_weight = ce_weight
-        self.dice_weight = dice_weight
-        self.ce_loss = nn.CrossEntropyLoss()
-        self.dice_loss = DiceLoss()
-
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        # Verificar se target é um tensor de índices
-        if target.dim() == 4:
-            target = torch.argmax(target, dim=1)
-        if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
-            raise ValueError("Valores em target estão fora do intervalo esperado")
-
-        ce_loss = self.ce_loss(pred, target)
-        dice_loss = self.dice_loss(pred, target)
-        return self.ce_weight * ce_loss + self.dice_weight * dice_loss
 
 
 class DiceLoss(nn.Module):
-    def __init__(self, smooth=1.0):
+    def __init__(self):
         super(DiceLoss, self).__init__()
-        self.smooth = smooth
+
+    @staticmethod
+    def forward(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        smooth = 1.0
+        pred = pred.contiguous()
+        target = target.contiguous()
+
+        intersection = (pred * target).sum(dim=2).sum(dim=2)
+        dice_score = (2. * intersection + smooth) / (pred.sum(dim=2).sum(dim=2) + target.sum(dim=2).sum(dim=2) + smooth)
+
+        return 1 - dice_score.mean()
+
+
+class SegmentationLoss(nn.Module):
+    def __init__(self, bce_weight=1, dice_weight=0.0):
+        super(SegmentationLoss, self).__init__()
+        self.bce_weight = bce_weight
+        self.dice_weight = dice_weight
+        self.bce_loss = nn.BCELoss()
+        self.dice_loss = DiceLoss()
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        # Verificar se target é um tensor de índices
-        if target.dim() == 4:
-            target = torch.argmax(target, dim=1)
-        if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
-            raise ValueError("Valores em target estão fora do intervalo esperado")
+        # Garantir que target esteja no formato float e normalizado para [0, 1]
+        if target.dtype != torch.float32:
+            target = target.float()
+        if target.max() > 1:
+            target = target / 255.0
 
-        pred = F.softmax(pred, dim=1)
-        target_one_hot = F.one_hot(target, num_classes=pred.shape[1]).permute(0, 3, 1, 2).float()
+        bce_loss = self.bce_loss(pred, target)
+        dice_loss = self.dice_loss(pred, target)
+        return self.bce_weight * bce_loss + self.dice_weight * dice_loss
 
-        intersection = (pred * target_one_hot).sum(dim=(2, 3))
-        union = pred.sum(dim=(2, 3)) + target_one_hot.sum(dim=(2, 3))
 
-        dice = (2. * intersection + self.smooth) / (union + self.smooth)
-        return 1 - dice.mean()
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
 
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        BCE_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        pt = torch.exp(-BCE_loss)
+        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+        return F_loss.mean()
+
+
+class SegmentationFocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2):
+        super(SegmentationLoss, self).__init__()
+        self.focal_loss = FocalLoss(alpha=alpha, gamma=gamma)
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if target.dtype != torch.float32:
+            target = target.float()
+        if target.max() > 1:
+            target = target / 255.0
+
+        return self.focal_loss(pred, target)
+
+
+# ----------------------------
+# Softmax Implementation (for reference)
+# class SegmentationLoss(nn.Module):
+#     def __init__(self, ce_weight=1, dice_weight=0.0):
+#         super(SegmentationLoss, self).__init__()
+#         self.ce_weight = ce_weight
+#         self.dice_weight = dice_weight
+#         self.ce_loss = nn.CrossEntropyLoss()
+#         self.dice_loss = DiceLoss()
+#
+#     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+#         # Verificar se target é um tensor de índices
+#         if target.dim() == 4:
+#             target = target.argmax(dim=1)
+#         elif target.dim() == 3:
+#             target = target.long()
+#         if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
+#             raise ValueError("Values in target are out of expected range")
+#
+#         ce_loss = self.ce_loss(pred, target)
+#         dice_loss = self.dice_loss(pred, target)
+#         return self.ce_weight * ce_loss + self.dice_weight * dice_loss
+#
+#
+# class DiceLoss(nn.Module):
+#     def __init__(self, smooth=1.0):
+#         super(DiceLoss, self).__init__()
+#         self.smooth = smooth
+#
+#     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+#         # Verificar se target é um tensor de índices
+#         if target.dim() == 4:
+#             target = torch.argmax(target, dim=1)
+#         if torch.any(target < 0) or torch.any(target >= pred.shape[1]):
+#             raise ValueError("Values in target are out of expected range")
+#
+#         pred = F.softmax(pred, dim=1)
+#         target_one_hot = F.one_hot(target, num_classes=pred.shape[1]).permute(0, 3, 1, 2).float()
+#
+#         intersection = (pred * target_one_hot).sum(dim=(2, 3))
+#         union = pred.sum(dim=(2, 3)) + target_one_hot.sum(dim=(2, 3))
+#
+#         dice = (2. * intersection + self.smooth) / (union + self.smooth)
+#         return 1 - dice.mean()
+#
+
+# ----------------------------
 
 # class SegmentationLoss(nn.Module):
 #     def __init__(self, ce_weight=0.5, dice_weight=0.5):
