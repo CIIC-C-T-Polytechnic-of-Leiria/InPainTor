@@ -1,9 +1,9 @@
-# This script loads a trained model_, creates a test data loader, and performs inference on the test set. The output masks are saved to files using `torch.save`.
-# You can modify the script to save the output masks in a different format or to a different location.
-#
-# To run the script, you can use the following command:
-#     `python src/inference.py --model_path checkpoints/best_model_old.pth --data_dir data/CamVid`
-# Replace `path/to/trained/model_.pth` with the path to the trained model_ file, and `path/to/dataset` with the path to the dataset directory.
+"""
+    Performs inference on the test set using the trained InPainTor.
+
+    Usage:
+        python src/inference.py --model_path "path/to/model.pth" --data_dir "path/to/data" --image_size 512 --mask_size 256 --batch_size 1 --output_dir "path/to/outputs"
+"""
 
 import argparse
 import importlib
@@ -16,61 +16,87 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+# Update and reload modules to reflect recent changes
 import dataset
 import model
 
-# Reload the modules in case they have been modified
 importlib.reload(dataset)
 importlib.reload(model)
 
-from dataset import CamVidDataset
-from model import InpainTor
+from dataset import RORDInpaintingDataset  # Adjust according to the updated dataset
+from model import InpainTor  # Adjust according to the updated model
 
 
 def inference(model_path: str, data_dir: str, image_size: tuple, mask_size: tuple, batch_size: int,
-              class_dict: dict) -> None:
-    # Create test data loader
-    test_dataset = CamVidDataset(root_dir=data_dir, split='test', image_size=image_size, mask_size=mask_size)
+              class_dict: dict, output_dir: str) -> None:
+    """
+    Performs inference on the test set and saves the output masks.
+
+    Parameters:
+        model_path (str): Path to the trained InPainTor.
+        data_dir (str): Path to the data directory.
+        image_size (tuple): Size of the input images.
+        mask_size (tuple): Size of the masks.
+        batch_size (int): Batch size for inference.
+        class_dict (dict): Dictionary mapping class IDs to RGB values.
+        output_dir (str): Directory where the output masks will be saved.
+    """
+
+    # Create test DataLoader
+
+    test_dataset = RORDInpaintingDataset(root_dir=data_dir, split='test', image_size=image_size)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    # Load model_
-    model = InpainTor(num_classes=40)
-    model.load_state_dict(torch.load(model_path, map_location=torch.device('cuda')))
-    model.eval()
-    model.to('cuda')
+    # Load the InPainTor
+    InPainTor = InpainTor(num_classes=len(class_dict))  # Adjust the number of classes based on the dictionary
+    InPainTor.load_state_dict(torch.load(model_path, map_location=torch.device('cuda')))
+    InPainTor.eval()
+    InPainTor.to('cuda')
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
 
     # Inference
     with torch.no_grad():
         for i, batch in enumerate(tqdm(test_loader, desc='Inference')):
-            inputs, _ = batch['image'].to('cuda'), batch['mask'].to('cuda')
-            outputs = model(inputs)
+            inputs = batch['image'].to('cuda')
+            outputs = InPainTor(inputs)
 
-            # Save output masks (B, C, H, W) to png using class_dict.json to map class ids to RGB values
-            output = outputs.argmax(dim=1).cpu().numpy()  # Get the most likely class for each pixel
-            output_rgb = np.zeros((output.shape[1], output.shape[2], 3), dtype=np.uint8)
+            # Outputs: inpainted_image and masked_out
 
-            for class_id, class_info in enumerate(class_dict):
-                rgb = [class_info['r'], class_info['g'], class_info['b']]
-                output_rgb[output[0] == class_id] = rgb
+            # Process outputs
+            inpainted_images = outputs['inpainted_image'].cpu().numpy()
+            masks = outputs['mask'].cpu().numpy()
 
-            # Save output mask
-            Image.fromarray(output_rgb).save(os.path.join('outputs', f'output_mask_{i}.png'))
+            # Save the masks
+            for j in range(batch_size):
+                mask = masks[j].transpose(1, 2, 0)
+                mask = np.argmax(mask, axis=2)
+                mask = np.vectorize(class_dict.get)(mask).astype(np.uint8)
+                mask = Image.fromarray(mask)
+                mask.save(os.path.join(output_dir, f'mask_{i * batch_size + j}.png'))
+
+                # Save the inpainted images
+                inpainted_image = inpainted_images[j].transpose(1, 2, 0)
+                inpainted_image = (inpainted_image * 255).astype(np.uint8)
+                inpainted_image = Image.fromarray(inpainted_image)
+                inpainted_image.save(os.path.join(output_dir, f'inpainted_image_{i * batch_size + j}.png'))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Inference on the test set')
-    parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model_')
-    parser.add_argument('--data_dir', type=str, default='data/CamVid', help='Path to the dataset dir')
+    parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model')
+    parser.add_argument('--data_dir', type=str, default='data/CamVid', help='Path to the dataset directory')
     parser.add_argument('--image_size', type=int, default=512, help='Size of the input images, assumed to be square')
     parser.add_argument('--mask_size', type=int, default=256, help='Size of the masks, assumed to be square')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size for inference')
+    parser.add_argument('--output_dir', type=str, default='outputs', help='Directory to save the output masks')
 
     args = parser.parse_args()
-    # print("Parsed arguments:", args.__dict__)
 
-    # load class_dict
-    with open(os.path.join(args.data_dir, 'class_dict.json'), 'r') as f:
-        class_dict = json.load(f)
+    # Load class_dict
+    with open('assets/coco_91_classes.json', 'r') as f:
+        class_dict = json.load
 
     inference(args.model_path, args.data_dir, (args.image_size, args.image_size), (args.mask_size, args.mask_size),
-              args.batch_size, class_dict)
+              args.batch_size, class_dict, args.output_dir)
