@@ -14,24 +14,14 @@ def calculate_same_padding(input_size: int, kernel_size: int, stride: int):
     return padding
 
 
-# class Conv1x1(nn.Module):
-#     def __init__(self, in_channels, out_channels, stride=1, bias=True, activation=None):
-#         super(Conv1x1, self).__init__()
-#
-#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=bias)
-#
-#         if activation == "gelu":
-#             self.activation = nn.GELU()
-#         elif activation:
-#             self.activation = nn.ReLU(activation)
-#         else:
-#             self.activation = None
-#
-#     def forward(self, x):
-#         x = self.conv(x)
-#         if self.activation is not None:
-#             x = self.activation(x)
-#         return x
+class Sigmoid(nn.Module):
+    def __init__(self):
+        super(Sigmoid, self).__init__()
+
+    @staticmethod
+    def forward(x):
+        return F.sigmoid(x)
+
 
 class LogSoftmax(nn.Module):
     def __init__(self, dim=1):
@@ -226,48 +216,6 @@ class ClassesToMask_v2(nn.Module):
         return mask
 
 
-# class ClassesToMask(nn.Module):
-#     """
-#     Convert a multi-class segmentation map to a binary mask for a subset of classes.
-#
-#     Args:
-#         num_classes: The total number of classes in the segmentation map.
-#         class_ids: A list of class IDs to include in the mask.
-#         threshold: The threshold value to use for binarizing the mask.
-#         use_threshold: A boolean indicating whether to apply thresholding.
-#
-#     Returns:
-#         A binary mask tensor of shape NxHxW, where 0 indicates the presence of an object
-#         and 1 indicates the absence of an object.
-#     """
-#
-#     def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
-#         super(ClassesToMask, self).__init__()
-#         self.num_classes = num_classes
-#         self.class_ids = class_ids
-#         self.threshold = threshold
-#         self.use_threshold = use_threshold
-#
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         """
-#         x: NxCxHxW tensor, where N is the batch size, C is the number of classes,
-#             H and W are the height and width of the segmentation maps.
-#
-#         Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
-#                  and 1 indicates the absence of an object.
-#         """
-#         x = x[:, self.class_ids, :, :]
-#         probs = torch.sigmoid(x)
-#         max_probs, _ = torch.max(probs, dim=1, keepdim=True)
-#
-#         if self.use_threshold:
-#             mask = (max_probs > self.threshold).float()
-#         else:
-#             mask = max_probs
-#
-#         return mask
-
-
 class AveragePool2d(nn.Module):
     def __init__(self, kernel_size=2, stride=2):
         super(AveragePool2d, self).__init__()
@@ -336,6 +284,67 @@ class ChannelAttention(nn.Module):
         # Compute output
         output = x * attention_scores.unsqueeze(-1).unsqueeze(-1)
         return output
+
+# class Conv1x1(nn.Module):
+#     def __init__(self, in_channels, out_channels, stride=1, bias=True, activation=None):
+#         super(Conv1x1, self).__init__()
+#
+#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=bias)
+#
+#         if activation == "gelu":
+#             self.activation = nn.GELU()
+#         elif activation:
+#             self.activation = nn.ReLU(activation)
+#         else:
+#             self.activation = None
+#
+#     def forward(self, x):
+#         x = self.conv(x)
+#         if self.activation is not None:
+#             x = self.activation(x)
+#         return x
+
+# class ClassesToMask(nn.Module):
+#     """
+#     Convert a multi-class segmentation map to a binary mask for a subset of classes.
+#
+#     Args:
+#         num_classes: The total number of classes in the segmentation map.
+#         class_ids: A list of class IDs to include in the mask.
+#         threshold: The threshold value to use for binarizing the mask.
+#         use_threshold: A boolean indicating whether to apply thresholding.
+#
+#     Returns:
+#         A binary mask tensor of shape NxHxW, where 0 indicates the presence of an object
+#         and 1 indicates the absence of an object.
+#     """
+#
+#     def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
+#         super(ClassesToMask, self).__init__()
+#         self.num_classes = num_classes
+#         self.class_ids = class_ids
+#         self.threshold = threshold
+#         self.use_threshold = use_threshold
+#
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         """
+#         x: NxCxHxW tensor, where N is the batch size, C is the number of classes,
+#             H and W are the height and width of the segmentation maps.
+#
+#         Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
+#                  and 1 indicates the absence of an object.
+#         """
+#         x = x[:, self.class_ids, :, :]
+#         probs = torch.sigmoid(x)
+#         max_probs, _ = torch.max(probs, dim=1, keepdim=True)
+#
+#         if self.use_threshold:
+#             mask = (max_probs > self.threshold).float()
+#         else:
+#             mask = max_probs
+#
+#         return mask
+
 
 # class SeparableConv2d(nn.Module):
 #     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True, activation=None):
