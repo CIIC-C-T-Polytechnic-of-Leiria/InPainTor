@@ -183,8 +183,6 @@ def save_train_images(step: int,
 
     # Process output mask
     output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
-    threshold = 0.25
-    output_mask = (output_mask > threshold).astype(np.float32)
 
     # Create a composite image for segmentation target and output mask
     if selected_classes is None:
@@ -203,7 +201,9 @@ def save_train_images(step: int,
         else:
             seg_target_composite += np.expand_dims(seg_target_image == class_idx, axis=-1) * color
 
-        output_mask_composite += np.expand_dims(output_mask[class_idx], axis=-1) * color
+        threshold = 0.5
+        output_mask_temp = (output_mask > threshold).astype(np.float32)
+        output_mask_composite += np.expand_dims(output_mask_temp[class_idx], axis=-1) * color
 
     seg_target_composite = np.clip(seg_target_composite, 0, 1)  # Normalize to [0, 1]
     output_mask_composite = np.clip(output_mask_composite, 0, 1)  # Normalize to [0, 1]
