@@ -187,6 +187,28 @@ class RORDInpaintingDataset(Dataset):
 
 
 class COCOSegmentationDataset(Dataset):
+    """
+    A PyTorch Dataset for loading COCO segmentation data.
+
+    This dataset loads images and their corresponding segmentation masks from the COCO dataset.
+    It supports selecting specific classes and creates a multi-channel mask where each channel
+    corresponds to a selected class.
+
+    Attributes:
+        root_dir (str): Root directory of the COCO dataset.
+        split (str): Data split ('train', 'val', etc.).
+        year (str): COCO dataset year.
+        image_size (tuple): Target size for the input images.
+        mask_size (tuple): Target size for the segmentation masks.
+        transform (callable, optional): Optional transform to be applied on the image.
+        selected_class_ids (list, optional): List of class IDs to include. If None, all classes are used.
+
+    The dataset returns a dictionary containing:
+        - 'image': A normalized RGB image tensor of shape (3, H', W').
+        - 'mask': A multi-channel binary mask tensor of shape (num_classes, H'', W''),
+                  where each channel corresponds to a selected class.
+    """
+
     def __init__(self, root_dir: str, split: str, year: str, image_size: tuple, mask_size: tuple, transform=None,
                  selected_class_ids=None):
         self.root_dir = root_dir
@@ -230,13 +252,13 @@ class COCOSegmentationDataset(Dataset):
 
         # Check if image file exists
         if not os.path.exists(img_path):
-            self.logger.warning(f"Image file not found: {img_path}")
+            self.logger.warning(f"\nImage file not found: {img_path}")
             return None
 
         try:
             image = Image.open(img_path).convert('RGB')  # Dimension: (C=3, H, W)
         except IOError:
-            self.logger.warning(f"Unable to open image file: {img_path}")
+            self.logger.warning(f"\nUnable to open image file: {img_path}")
             return None
 
         # Initialize multichannel mask
@@ -247,7 +269,7 @@ class COCOSegmentationDataset(Dataset):
         anns = self.coco.loadAnns(ann_ids)
 
         if not anns:
-            self.logger.warning(f"No annotations found for image: {img_path}")
+            self.logger.warning(f"\nNo annotations found for image: {img_path}")
             return None
 
         for ann in anns:
@@ -265,8 +287,7 @@ class COCOSegmentationDataset(Dataset):
 
         # Resize mask for each class
         mask = torch.as_tensor(mask, dtype=torch.float32)  # Convert to float tensor
-        resized_mask = torch.zeros((self.num_classes, *self.mask_size),
-                                   dtype=torch.float32)  # Initialize resized mask
+        resized_mask = torch.zeros((self.num_classes, *self.mask_size), dtype=torch.float32)
 
         for i in range(self.num_classes):
             mask_channel = Image.fromarray(mask[i].numpy())
