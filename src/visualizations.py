@@ -4,6 +4,8 @@ import re
 
 import imageio.v2 as imageio
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -129,12 +131,6 @@ def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
     grid_image.save(os.path.join(output_path, f"grid_image_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"))
 
 
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-import torch
-
-
 def denormalize(image: np.ndarray, mean: list, std: list) -> np.ndarray:
     mean = np.array(mean).reshape(1, 1, 3)
     std = np.array(std).reshape(1, 1, 3)
@@ -185,38 +181,29 @@ def save_train_images(step: int,
     else:
         raise ValueError(f"Unexpected shape for seg_target: {seg_target.shape}")
 
-    # print(
-    #     f"Segmentation target shape: {seg_target_image.shape}, Segmentation target min: {seg_target_image.min()}, Segmentation target max: {seg_target_image.max()}")
-
     # Process output mask
     output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
-    # print(
-    #     f"Output mask shape: {output_mask.shape}, Output mask min: {output_mask.min()}, Output mask max: {output_mask.max()}")
-    #
-    # # Print statistics for each channel of the output mask
-    # for i in range(output_mask.shape[0]):
-    #     print(f"Channel {i} - min: {output_mask[i].min()}, max: {output_mask[i].max()}, mean: {output_mask[i].mean()}")
-
-    # Convert output mask to categorical if necessary
-    if output_mask.ndim == 3 and output_mask.shape[0] > 1:
-        output_mask_arg = np.argmax(output_mask, axis=0)
+    threshold = 0.25
+    output_mask = (output_mask > threshold).astype(np.float32)
 
     # Create a composite image for segmentation target and output mask
     if selected_classes is None:
-        selected_classes = range(seg_target_image.shape[-1] if seg_target_image.ndim == 3 else 1)
+        selected_classes = range(output_mask.shape[0])
 
     seg_target_composite = np.zeros((*seg_target_image.shape[:2], 3))
-    output_mask_composite = np.zeros((*output_mask_arg.shape[:2], 3))
+    output_mask_composite = np.zeros((*output_mask.shape[1:], 3))
 
     colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(selected_classes)))[:, :3]
 
     for i, class_idx in enumerate(selected_classes):
-        if seg_target_image.ndim == 3:
-            seg_target_composite += np.expand_dims(seg_target_image[..., class_idx], axis=-1) * colors[i]
-        else:
-            seg_target_composite += np.expand_dims(seg_target_image, axis=-1) * colors[i]
+        color = colors[i]
 
-        output_mask_composite[output_mask_arg == class_idx] = colors[i]
+        if seg_target_image.ndim == 3:
+            seg_target_composite += np.expand_dims(seg_target_image[..., class_idx], axis=-1) * color
+        else:
+            seg_target_composite += np.expand_dims(seg_target_image == class_idx, axis=-1) * color
+
+        output_mask_composite += np.expand_dims(output_mask[class_idx], axis=-1) * color
 
     seg_target_composite = np.clip(seg_target_composite, 0, 1)  # Normalize to [0, 1]
     output_mask_composite = np.clip(output_mask_composite, 0, 1)  # Normalize to [0, 1]
@@ -243,8 +230,7 @@ def save_train_images(step: int,
     axs[0, 2].set_title('Output Mask Composite')
 
     # Second row - show individual channels of the output mask
-    for i in range(output_mask.shape[0]):
-        print(f"output_mask.shape[0] {output_mask.shape[0]}, output_mask.shape {output_mask.shape}")
+    for i in range(min(output_mask.shape[0], 4)):
         axs[1, i].imshow(output_mask[i], cmap='gray')
         axs[1, i].set_title(f'Output Mask Channel {i}')
 
@@ -258,4 +244,5 @@ def save_train_images(step: int,
 
     # Save the figure to a file
     plt.savefig(os.path.join(save_dir, f'{phase}_grid_image_step_{step}.png'), bbox_inches='tight', dpi=300)
+    print(f"\nSaved {phase} grid image at step {step}, in {save_dir}")
     plt.close(fig)
