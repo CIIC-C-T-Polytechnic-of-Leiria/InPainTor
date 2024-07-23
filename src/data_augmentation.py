@@ -1,5 +1,41 @@
 """
-Class Data Augmentation operations to images.
+Module providing data augmentation operations for images using RandAugment.
+
+This module implements the RandAugment algorithm, which applies a series
+of image transformations to enhance the diversity of training data. The main class provided is:
+
+- `RandAugment`: Applies a sequence of randomly chosen augmentation operations to images.
+The operations include brightness, color, contrast adjustments, rotation,
+sharpness enhancement, shearing, translation, and cutout.
+
+Classes:
+- `RandAugment`:
+    - **Args**:
+        - `num_operations` (int): Number of augmentation operations to apply to each image.
+        - `magnitude` (int): Magnitude or strength of the augmentation operations.
+        - `img_size` (int, optional): Size of the image used for cutout augmentation. Defaults to 32.
+    - **Returns**:
+        - Tuple[Image, Image]: Augmented image and corresponding label.
+
+    - **Methods**:
+        - `__init__(num_operations, magnitude, img_size)`: Initializes the RandAugment with specified operations and magnitude.
+        - `__call__(img, label)`: Applies the augmentations to the input image and label.
+        - `_augment_pool()`: Returns a list of possible augmentation operations.
+        - Augmentation operations such as `_brightness`, `_color`, `_contrast`, `_rotate`,
+        `_sharpness`, `_shear_x`, `_shear_y`, `_translate_x`, `_translate_y`, and `_cutout_abs` perform various image transformations.
+
+Usage:
+    >>> augmenter = RandAugment(num_operations=3, magnitude=5)
+    >>> augmented_image, augmented_label = augmenter(image, label)
+
+Notes:
+    - Ensure to use `PIL` and `numpy` libraries for image and numerical operations.
+    - The `cutout` operation masks a random area of the image with a solid color.
+
+Not implemented:
+    - Logging functionality is not implemented in this module.
+    - It's not being included in the current training pipeline !
+
 """
 
 import random
@@ -7,9 +43,6 @@ from typing import Callable, List, Tuple
 
 import numpy as np
 from PIL import Image, ImageEnhance
-
-
-# TODO (1): Implement logging
 
 
 class RandAugment:
