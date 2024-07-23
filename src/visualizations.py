@@ -1,3 +1,16 @@
+"""
+visualizations.py
+
+    Contains utility functions for visualizing training logs, saving images, and creating videos from images.
+
+    Functions:
+        video_from_images: Generate a video from a sequence of ordered images.
+        plot_training_log: Plot the training and validation loss from a log file.
+        save_images_on_grid: Save a grid of binary images to a file.
+        denormalize: Denormalize an image using the provided mean and standard deviation.
+        save_train_images_v2: Save a grid of images for visualization during training or validation.
+"""
+
 import datetime
 import os
 import re
@@ -108,6 +121,9 @@ def plot_training_log(file_path, log_scale=False, log_interval=1):
 
 
 def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
+    """
+    Save a grid of binary images to a file. The images are assumed to be binary masks.
+    """
     # Ensure the output directory exists
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -132,23 +148,24 @@ def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
 
 
 def denormalize(image: np.ndarray, mean: list, std: list) -> np.ndarray:
+    """
+    Denormalize an image using the provided mean and standard deviation.
+    """
     mean = np.array(mean).reshape(1, 1, 3)
     std = np.array(std).reshape(1, 1, 3)
     image = image * std + mean
     return np.clip(image, 0, 1)
 
 
-def save_train_images(step: int,
-                      inputs: torch.Tensor,
-                      seg_target: torch.Tensor,
-                      inpaint_target: torch.Tensor,
-                      outputs: dict,
-                      phase: str,
-                      is_validation: bool = False,
-                      save_path: str = 'logs/images',
-                      selected_classes: list = None,
-                      mean: list = [0.485, 0.456, 0.406],
-                      std: list = [0.229, 0.224, 0.225]) -> None:
+def save_train_images_v2(step: int,
+                         inputs: torch.Tensor,
+                         seg_target: torch.Tensor,
+                         inpaint_target: torch.Tensor,
+                         outputs: dict,
+                         phase: str,
+                         is_validation: bool = False,
+                         save_path: str = 'outputs/training',
+                         threshold: float = 0.5) -> None:
     """
     Save a grid of images for visualization during training or validation.
 
@@ -156,93 +173,116 @@ def save_train_images(step: int,
         step (int): The current training step.
         inputs (torch.Tensor): The input images.
         seg_target (torch.Tensor): The segmentation target.
-        inpaint_target (torch.Tensor): The inpainting target (can be None for segmentation phase).
+        inpaint_target (torch.Tensor): The inpainting target.
         outputs (dict): The model outputs.
         phase (str): The current training phase ('segmentation' or 'inpainting').
         is_validation (bool): Whether the images are from the validation set.
         save_path (str): The directory to save the images.
-        selected_classes (list): List of selected class indices for visualization.
-        mean (list): Mean values used for normalization.
-        std (list): Standard deviation values used for normalization.
+        threshold (float): Threshold value for segmentation masks.
     """
 
-    # Ensure we're working with the first image in the batch
     example_idx = 0
 
-    # Process input image
+    # Normalize input image
     input_image = inputs[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
-    input_image = denormalize(input_image, mean, std)  # Denormalize
+    # input_image = (input_image - input_image.min()) / (input_image.max() - input_image.min())
+    # print(f"DEBUG (save_train_images_v2): Input image shape: {input_image.shape}")
 
     # Process segmentation target
-    if seg_target.dim() == 3:  # If it's [B, H, W]
+    if seg_target is not None:
         seg_target_image = seg_target[example_idx].cpu().detach().numpy()
-    elif seg_target.dim() == 4:  # If it's [B, C, H, W]
-        seg_target_image = seg_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
+        # print(f"DEBUG (save_train_images_v2): Original seg_target_image shape: {seg_target_image.shape}")
+
+        # Ensure seg_target_image is in the format (height, width, channels)
+        if seg_target_image.shape[0] == 4 and seg_target_image.shape[-1] != 4:
+            seg_target_image = seg_target_image.transpose(1, 2, 0)
+
+        # print(f"DEBUG (save_train_images_v2): Processed seg_target_image shape: {seg_target_image.shape}")
     else:
-        raise ValueError(f"Unexpected shape for seg_target: {seg_target.shape}")
+        seg_target_image = None
 
     # Process output mask
     output_mask = outputs['mask'][example_idx].cpu().detach().numpy()
+    print(f"DEBUG (save_train_images_v2): Output mask shape: {output_mask.shape}")
+    print(
+        f"DEBUG (save_train_images_v2): Max value in output mask: {output_mask.max()}, Min value: {output_mask.min()}")
 
-    # Create a composite image for segmentation target and output mask
-    if selected_classes is None:
-        selected_classes = range(output_mask.shape[0])
+    # Apply sigmoid and thresholding to output mask
+    output_mask = (output_mask > threshold).astype(float)
+    print(
+        f"DEBUG (save_train_images_v2): After threshold Max value in output mask: {output_mask.max()}, Min value: {output_mask.min()}")
+    print(f"DEBUG (save_train_images_v2): Number of classes: {output_mask.shape[0]}")
 
-    seg_target_composite = np.zeros((*seg_target_image.shape[:2], 3))
+    num_classes = max(output_mask.shape[0], seg_target_image.shape[-1] if seg_target_image is not None else 0)
+    # print(f"DEBUG (save_train_images_v2): Number of classes: {num_classes}")
+
+    # Generate colors using tab10 colormap
+    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, num_classes))[:, :3]
+
+    # Create composite images for the output mask and segmentation target
     output_mask_composite = np.zeros((*output_mask.shape[1:], 3))
+    for i in range(output_mask.shape[0]):
+        output_mask_composite += np.expand_dims(output_mask[i], axis=-1) * colors[i]
+    output_mask_composite = np.clip(output_mask_composite, 0, 1)
 
-    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(selected_classes)))[:, :3]
+    if seg_target_image is not None:
+        seg_target_composite = np.zeros((*seg_target_image.shape[:2], 3))
+        for i in range(seg_target_image.shape[-1]):
+            seg_target_composite += np.expand_dims(seg_target_image[..., i], axis=-1) * colors[i]
+        seg_target_composite = np.clip(seg_target_composite, 0, 1)
+    else:
+        seg_target_composite = np.zeros_like(input_image)
 
-    for i, class_idx in enumerate(selected_classes):
-        color = colors[i]
+    # print(f"DEBUG (save_train_images_v2): seg_target_composite shape: {seg_target_composite.shape}")
+    # print(f"DEBUG (save_train_images_v2): output_mask_composite shape: {output_mask_composite.shape}")
 
-        if seg_target_image.ndim == 3:
-            seg_target_composite += np.expand_dims(seg_target_image[..., class_idx], axis=-1) * color
-        else:
-            seg_target_composite += np.expand_dims(seg_target_image == class_idx, axis=-1) * color
-
-        threshold = 0.5
-        output_mask_temp = (output_mask > threshold).astype(np.float32)
-        output_mask_composite += np.expand_dims(output_mask_temp[class_idx], axis=-1) * color
-
-    seg_target_composite = np.clip(seg_target_composite, 0, 1)  # Normalize to [0, 1]
-    output_mask_composite = np.clip(output_mask_composite, 0, 1)  # Normalize to [0, 1]
-
-    # Handle inpainting images
-    if phase == 'inpainting' and inpaint_target is not None:
+    # Process inpainting images
+    if inpaint_target is not None:
         inpaint_target_image = inpaint_target[example_idx].cpu().detach().numpy().transpose(1, 2, 0)
-        inpaint_target_image = denormalize(inpaint_target_image, mean, std)  # Denormalize
-        inpaint_output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy().transpose(1, 2, 0)
-        inpaint_output_image = denormalize(inpaint_output_image, mean, std)  # Denormalize
+        inpaint_target_image = (inpaint_target_image - inpaint_target_image.min()) / (
+                inpaint_target_image.max() - inpaint_target_image.min())
     else:
         inpaint_target_image = np.zeros_like(input_image)
+
+    if 'inpainted_image' in outputs:
+        inpaint_output_image = outputs['inpainted_image'][example_idx].cpu().detach().numpy().transpose(1, 2, 0)
+        inpaint_output_image = (inpaint_output_image - inpaint_output_image.min()) / (
+                inpaint_output_image.max() - inpaint_output_image.min())
+    else:
         inpaint_output_image = np.zeros_like(input_image)
 
     # Create the figure
-    fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(30, 15))
+    fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(25, 15))
 
     # First row
     axs[0, 0].imshow(input_image)
     axs[0, 0].set_title('Input Image')
-    axs[0, 1].imshow(seg_target_composite)
-    axs[0, 1].set_title('Segmentation Target')
-    axs[0, 2].imshow(output_mask_composite)
-    axs[0, 2].set_title('Output Mask Composite')
 
-    # Second row - show individual channels of the output mask
-    for i in range(min(output_mask.shape[0], 4)):
-        axs[1, i].imshow(output_mask[i], cmap='gray')
-        axs[1, i].set_title(f'Output Mask Channel {i}')
+    axs[0, 1].imshow(inpaint_target_image)
+    axs[0, 1].set_title('Inpainting Target')
 
-    # Adjust layout and save
+    axs[0, 2].imshow(inpaint_output_image)
+    axs[0, 2].set_title('Inpainting Output')
+
+    # Second row
+    axs[1, 0].imshow(seg_target_composite)
+    axs[1, 0].set_title(f'Segmentation Target ({seg_target_composite.shape[0]}x{seg_target_composite.shape[1]})')
+
+    axs[1, 1].imshow(output_mask_composite)
+    axs[1, 1].set_title(f'Output Mask Composite ({output_mask_composite.shape[0]}x{output_mask_composite.shape[1]})')
+
+    # Show the first channel of the output mask
+    axs[1, 2].imshow(output_mask[0], cmap='gray')
+    axs[1, 2].set_title(f'Output Mask - Channel 0 ({output_mask[0].shape[0]}x{output_mask[0].shape[1]})')
+
     plt.tight_layout()
 
-    # Create directory for saving images
+    # Create the directory to save the images
     prefix = "val" if is_validation else "train"
     save_dir = os.path.join(save_path, f"{prefix}_{phase}_images")
     os.makedirs(save_dir, exist_ok=True)
 
-    # Save the figure to a file
-    plt.savefig(os.path.join(save_dir, f'{phase}_grid_image_step_{step}.png'), bbox_inches='tight', dpi=300)
-    print(f"\nSaved {phase} grid image at step {step}, in {save_dir}")
+    # Save the image
+    plt.savefig(os.path.join(save_dir, f'{phase}_grid_image_step_{step}.png'), bbox_inches='tight')
+    print(f"\nSaved image at: {os.path.join(save_dir, f'{phase}_grid_image_step_{step}.png')}")
     plt.close(fig)
