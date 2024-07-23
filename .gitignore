@@ -144,4 +144,6 @@ outputs/CamVid
 *.pth
 
 logs/images/
-outputs/debug/
+outputs/debug/**
+outputs/training/**
+outputs/inference/**
