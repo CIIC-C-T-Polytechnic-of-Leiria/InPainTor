@@ -16,7 +16,9 @@
 **InPainTor**🎨 is a deep learning model designed for context-aware segmentation and inpainting in real-time. It
 recognizes objects of interest and performs inpainting on specific classes while preserving the surrounding context.
 
-![Training](assets/training_gif.gif)
+<center>
+  <img src="assets/training_gif.gif" alt="Training">
+</center>
 
 ## 🚀 Features
 
@@ -120,6 +122,16 @@ The InPainTor model consists of three main components:
 3. **GenerativeDecoder**: Uses segmentation information to generate inpainted images.
 
 The model is designed to be flexible, allowing for freezing and unfreezing of specific parts during training.
+
+**Overall Model Architecture**
+<center>
+  <img src="assets/model_full.jpeg" height="300px" style="border: 1px solid gray" alt="Model">
+</center>
+
+**Model Components in Detail**
+<center>
+  <img src="assets/model_components.jpeg" width="700px" style="border: 1px solid gray" alt="Model">
+</center>
 
 ## 📊 Dataset Requirements
 
