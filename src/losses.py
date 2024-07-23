@@ -1,3 +1,16 @@
+"""
+Module defining custom loss functions for deep learning tasks.
+
+This module includes implementations for various loss functions commonly used in segmentation and inpainting tasks:
+
+- `DiceLoss`: Computes the Dice loss, a measure of overlap between predicted and target binary masks.
+- `SegmentationLoss`: Combines Binary Cross Entropy (BCE) loss and Dice loss for segmentation tasks.
+- `FocalLoss`: Applies Focal Loss to address class imbalance by focusing on hard-to-classify examples.
+- `SegmentationFocalLoss`: Combines Focal Loss with optional normalization of target values for segmentation tasks.
+- `InpaintingLoss`: Uses L1 loss for image inpainting tasks, with a placeholder for potential Perceptual Loss integration.
+
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -45,11 +58,16 @@ class FocalLoss(nn.Module):
         self.alpha = alpha
         self.gamma = gamma
 
-    def forward(self, inputs, targets):
-        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-        pt = torch.exp(-BCE_loss)  # prevents nans when probability 0
-        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
-        return F_loss.mean()
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        bce_loss = F.binary_cross_entropy(pred, target, reduction='none')
+
+        pt = torch.where(target == 1, pred, 1 - pred)
+        focal_weight = (1 - pt) ** self.gamma
+
+        alpha_factor = torch.where(target == 1, self.alpha, 1 - self.alpha)
+        focal_loss = alpha_factor * focal_weight * bce_loss
+
+        return focal_loss.mean()
 
 
 class SegmentationFocalLoss(nn.Module):
@@ -114,9 +132,27 @@ class SegmentationFocalLoss(nn.Module):
 
 # ----------------------------
 
+class InpaintingLoss(nn.Module):
+    def __init__(self, mse_weight=1.0, perceptual_weight=0.1):
+        super(InpaintingLoss, self).__init__()
+        self.mse_weight = mse_weight
+        self.perceptual_weight = perceptual_weight
+        self.mse_loss = nn.MSELoss()
+        # TODO: test with PerceptualLoss
+        # self.perceptual_loss = PerceptualLoss()
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        mse_loss = self.mse_loss(pred, target)
+        # TODO: test with PerceptualLoss
+        # perceptual_loss = self.perceptual_loss(pred, target)
+        total_loss = self.mse_weight * mse_loss
+        # total_loss += self.perceptual_weight * perceptual_loss
+
+        return total_loss
+
 
 # TODO: Add PerceptualLoss to the InpaintingLoss
-class InpaintingLoss(nn.Module):
+class InpaintingLoss_v2(nn.Module):
     def __init__(self, l1_weight=1.0, perceptual_weight=0.1):
         super(InpaintingLoss, self).__init__()
         self.l1_weight = l1_weight
