@@ -1,4 +1,4 @@
-# InPainTor 🎨 : Context-Aware Segmentation and Inpainting in Real-Time
+# InPainTor🎨 : Context-Aware Segmentation and Inpainting in Real-Time
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
@@ -13,8 +13,8 @@
 
 ---
 
-InPainTor is a cutting-edge deep learning model designed for context-aware segmentation and inpainting in real-time. It
-excels at recognizing objects and performing inpainting on specific objects while preserving the surrounding context.
+**InPainTor**🎨 is a deep learning model designed for context-aware segmentation and inpainting in real-time. It
+recognizes objects of interest and performs inpainting on specific classes while preserving the surrounding context.
 
 ![Training](assets/training_gif.gif)
 
@@ -25,6 +25,10 @@ excels at recognizing objects and performing inpainting on specific objects whil
 - Context preservation during inpainting
 - Two-stage training process: segmentation and inpainting
 - Support for COCO and RORD datasets
+
+## 🚧 **WIP** (Work In Progress)
+
+This project is currently under development. Use with caution and expect changes.
 
 ## 🛠️ Installation
 
