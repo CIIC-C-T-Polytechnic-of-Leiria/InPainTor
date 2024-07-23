@@ -1,7 +1,86 @@
-import os
-from typing import List
+"""
+InpaintTor Model Definition
 
-import torch
+This script defines the `InpaintTor` model, which is an architecture combining shared encoding, segmentation decoding, and generative decoding blocks. The model is designed for tasks involving inpainting and segmentation. The components of the model include:
+
+1. **SharedEncoder**: Encodes input images into a series of feature maps.
+2. **SegmentorDecoder**: Decodes encoded features into segmentation masks.
+3. **GenerativeDecoder**: Uses segmentation information to generate inpainted images.
+
+Classes:
+    - SharedEncoder: A neural network encoder with several convolutional blocks for feature extraction.
+    - SegmentorDecoder: A neural network decoder that generates segmentation masks from encoded features.
+    - GenerativeDecoder: A neural network decoder that performs image generation using segmentation masks and encoded features.
+    - InpaintTor: The main model class that integrates the encoder, segmentation decoder, and generative decoder. It also includes methods for freezing/unfreezing parts of the network and saving/loading model states.
+
+Usage:
+    To use the `InpaintTor` model for training or inference, follow the steps below:
+
+    1. **Instantiate the Model**:
+        ```python
+        from your_module import InpaintTor
+
+        # Create an instance of the InpaintTor model
+        model = InpaintTor(selected_classes=[0, 1, 2], base_chs=32)
+        ```
+
+    2. **Forward Pass**:
+        ```python
+        import torch
+
+        # Create a dummy input tensor with the shape (batch_size, channels, height, width)
+        input_tensor = torch.randn(1, 3, 512, 512)
+
+        # Perform a forward pass through the model
+        outputs = model(input_tensor)
+
+        # Access the inpainted image and mask
+        inpainted_image = outputs['inpainted_image']
+        mask = outputs['mask']
+        ```
+
+    3. **Freezing and Unfreezing Parts of the Model**:
+        ```python
+        # Freeze the generator part of the model
+        model.freeze_part("generator")
+
+        # Unfreeze the generator part of the model
+        model.unfreeze_part("generator")
+        ```
+
+    4. **Saving and Loading Model State**:
+        ```python
+        # Save the model state
+        state_dict = model.get_state_dict("full")
+        torch.save(state_dict, "model.pth")
+
+        # Load the model state
+        loaded_state_dict = torch.load("model.pth")
+        model.load_state_dict(loaded_state_dict, "full")
+        ```
+
+Components:
+    - **SharedEncoder**: Consists of multiple `SepConvBlock` layers for progressively encoding the input image.
+    - **SegmentorDecoder**: Uses `SepConvTranspBlock` and `Conv1x1` layers to decode encoded features into segmentation masks.
+    - **GenerativeDecoder**: Combines several `SepConvTranspBlock` and `Conv2D` layers, along with attention blocks, to generate the final inpainted image.
+    - **InpaintTor**: Integrates the encoder, segmentation decoder, and generative decoder, and includes methods for managing model parameters and states.
+
+Dependencies:
+    - PyTorch (`torch`, `torchvision`)
+    - Custom layers (`AttentionBlock`, `AveragePool2d`, `ClassesToMask_v2`, `SepConvBlock`, `SepConvTranspBlock`, `Conv1x1`, `Conv2D`, `Sigmoid`)
+
+Note:
+    - TODO: Consider replacing `Conv2D` with `ResidualConv2D` for potential improvements.
+    - TODO: Explore using the ENet model as a base for the segmentation decoder.
+
+Exceptions:
+    - ValueError: Raised for invalid part specifications in methods for freezing/unfreezing and state dict operations.
+
+"""
+
+import os
+from typing import List, Dict, Any
+
 from torch import cat
 from torch.nn import Module
 from torchvision.utils import save_image
@@ -9,9 +88,6 @@ from torchvision.utils import save_image
 from layers import AttentionBlock, AveragePool2d
 from layers import ClassesToMask_v2
 from layers import SepConvBlock, SepConvTranspBlock, Conv1x1, Conv2D, Sigmoid
-
-
-# TODO: Substituir Conv2D por ResidualConv2D? - Todo later...
 
 
 class SharedEncoder(Module):
@@ -96,10 +172,12 @@ class GenerativeDecoder(Module):
         # masked_input = input_small * masked_out
         masked_input = input_small * masked_out
 
+        # save the masked input in the debug folder in a png file
+
         # print(f"GenerativeDecoder - masked_input shape: {masked_input.shape}")
 
-        # if self.counter % 10 == 0:
-        #     self.save_mask(masked_input, self.counter, name="masked_input")
+        if self.counter % 100 == 0:
+            self.save_mask(masked_input, self.counter, name="masked_input")
 
         attention1 = self.attention_block1(seg2)
         attention2 = self.attention_block2(seg3)
@@ -131,45 +209,50 @@ class InpainTor(Module):
         out_gen = self.generative_decoder(x, enc4, masked_out, seg2, seg3)
         return {'mask': masked_out, 'inpainted_image': out_gen}
 
-    def freeze_encoder_and_segmentor(self):
-        for param in self.shared_encoder.parameters():
-            param.requires_grad = False
-        for param in self.segment_decoder.parameters():
-            param.requires_grad = False
+    def freeze_part(self, part: str):
+        if part == "generator":
+            for param in self.generative_decoder.parameters():
+                param.requires_grad = False
+        elif part == "encoder_segmentor":
+            for param in self.shared_encoder.parameters():
+                param.requires_grad = False
+            for param in self.segment_decoder.parameters():
+                param.requires_grad = False
+        else:
+            raise ValueError("Invalid part specified. Use 'generator' or 'encoder_segmentor'.")
 
-    def unfreeze_encoder_and_segmentor(self):
-        for param in self.shared_encoder.parameters():
-            param.requires_grad = True
-        for param in self.segment_decoder.parameters():
-            param.requires_grad = True
+    def unfreeze_part(self, part: str):
+        if part == "generator":
+            for param in self.generative_decoder.parameters():
+                param.requires_grad = True
+        elif part == "encoder_segmentor":
+            for param in self.shared_encoder.parameters():
+                param.requires_grad = True
+            for param in self.segment_decoder.parameters():
+                param.requires_grad = True
+        else:
+            raise ValueError("Invalid part specified. Use 'generator' or 'encoder_segmentor'.")
 
-    def freeze_generator(self):
-        for param in self.generative_decoder.parameters():
-            param.requires_grad = False
+    def get_state_dict(self, part: str = "full"):
+        if part == "full":
+            return self.state_dict()
+        elif part == "encoder_segmentor":
+            return {
+                'shared_encoder': self.shared_encoder.state_dict(),
+                'segment_decoder': self.segment_decoder.state_dict()
+            }
+        elif part == "generator":
+            return self.generative_decoder.state_dict()
+        else:
+            raise ValueError("Invalid part specified. Use 'full', 'encoder_segmentor', or 'generator'.")
 
-    def unfreeze_generator(self):
-        for param in self.generative_decoder.parameters():
-            param.requires_grad = True
-
-    def save_encoder_and_segmentor(self, path):
-        torch.save({
-            'shared_encoder': self.shared_encoder.state_dict(),
-            'segment_decoder': self.segment_decoder.state_dict(),
-        }, path)
-
-    def load_encoder_and_segmentor(self, path):
-        checkpoint = torch.load(path)
-        self.shared_encoder.load_state_dict(checkpoint['shared_encoder'])
-        self.segment_decoder.load_state_dict(checkpoint['segment_decoder'])
-
-    def save_generator(self, path):
-        torch.save(self.generative_decoder.state_dict(), path)
-
-    def load_generator(self, path):
-        self.generative_decoder.load_state_dict(torch.load(path))
-
-    def save_full_model(self, path):
-        torch.save(self.state_dict(), path)
-
-    def load_full_model(self, path):
-        self.load_state_dict(torch.load(path))
+    def load_state_dict(self, state_dict: Dict[str, Any], part: str = "full"):
+        if part == "full":
+            super().load_state_dict(state_dict)
+        elif part == "encoder_segmentor":
+            self.shared_encoder.load_state_dict(state_dict['shared_encoder'])
+            self.segment_decoder.load_state_dict(state_dict['segment_decoder'])
+        elif part == "generator":
+            self.generative_decoder.load_state_dict(state_dict)
+        else:
+            raise ValueError("Invalid part specified. Use 'full', 'encoder_segmentor', or 'generator'.")
