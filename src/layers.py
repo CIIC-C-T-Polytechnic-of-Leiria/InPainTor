@@ -1,3 +1,23 @@
+"""
+Module containing custom PyTorch layers for deep learning architectures.
+
+This module includes implementations for various neural network layers and blocks:
+
+- `calculate_same_padding`: Computes padding to maintain the input size after a convolution operation.
+- `Sigmoid`: Applies the sigmoid activation function.
+- `LogSoftmax`: Applies the log softmax activation function along a specified dimension.
+- `Softmax`: Applies the softmax activation function along a specified dimension.
+- `Conv1x1`: Performs 1x1 convolutions followed by Batch Normalization and an optional activation function.
+- `SepConvBlock`: Implements a separable convolution block with optional skip connections and pooling.
+- `SepConvTranspBlock`: Implements a separable transposed convolution block.
+- `AttentionBlock`: Applies an attention mechanism to input features, enhancing feature representation.
+- `ClassesToMask_v2`: Converts class logits to binary masks based on specified class IDs and an optional threshold.
+
+Each class and function in this module is designed to facilitate the construction and experimentation
+with neural network models, providing functionalities such as activation functions,
+convolutions, separable convolutions, attention mechanisms, and class-to-mask transformations.
+"""
+
 from typing import List
 
 import torch
@@ -284,161 +304,3 @@ class ChannelAttention(nn.Module):
         # Compute output
         output = x * attention_scores.unsqueeze(-1).unsqueeze(-1)
         return output
-
-# class Conv1x1(nn.Module):
-#     def __init__(self, in_channels, out_channels, stride=1, bias=True, activation=None):
-#         super(Conv1x1, self).__init__()
-#
-#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=bias)
-#
-#         if activation == "gelu":
-#             self.activation = nn.GELU()
-#         elif activation:
-#             self.activation = nn.ReLU(activation)
-#         else:
-#             self.activation = None
-#
-#     def forward(self, x):
-#         x = self.conv(x)
-#         if self.activation is not None:
-#             x = self.activation(x)
-#         return x
-
-# class ClassesToMask(nn.Module):
-#     """
-#     Convert a multi-class segmentation map to a binary mask for a subset of classes.
-#
-#     Args:
-#         num_classes: The total number of classes in the segmentation map.
-#         class_ids: A list of class IDs to include in the mask.
-#         threshold: The threshold value to use for binarizing the mask.
-#         use_threshold: A boolean indicating whether to apply thresholding.
-#
-#     Returns:
-#         A binary mask tensor of shape NxHxW, where 0 indicates the presence of an object
-#         and 1 indicates the absence of an object.
-#     """
-#
-#     def __init__(self, num_classes: int, class_ids: List[int], threshold: float = 0.25, use_threshold: bool = True):
-#         super(ClassesToMask, self).__init__()
-#         self.num_classes = num_classes
-#         self.class_ids = class_ids
-#         self.threshold = threshold
-#         self.use_threshold = use_threshold
-#
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         """
-#         x: NxCxHxW tensor, where N is the batch size, C is the number of classes,
-#             H and W are the height and width of the segmentation maps.
-#
-#         Returns: A mask tensor of shape NxHxW, where 0 indicates the presence of an object
-#                  and 1 indicates the absence of an object.
-#         """
-#         x = x[:, self.class_ids, :, :]
-#         probs = torch.sigmoid(x)
-#         max_probs, _ = torch.max(probs, dim=1, keepdim=True)
-#
-#         if self.use_threshold:
-#             mask = (max_probs > self.threshold).float()
-#         else:
-#             mask = max_probs
-#
-#         return mask
-
-
-# class SeparableConv2d(nn.Module):
-#     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True, activation=None):
-#         super(SeparableConv2d, self).__init__()
-#
-#         self.depthwise = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=kernel_size,
-#                                    stride=stride, padding=padding, groups=in_channels, bias=False)
-#
-#         self.pointwise = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1,
-#                                    padding=0, bias=bias)
-#
-#         if activation == "gelu":
-#             self.activation = nn.GELU()
-#         elif activation:
-#             self.activation = nn.ReLU(activation)
-#         else:
-#             self.activation = None
-#
-#     def forward(self, x):
-#         x = self.depthwise(x)
-#         x = self.pointwise(x)
-#         if self.activation is not None:
-#             x = self.activation(x)
-#         return x
-
-
-# class SeparableConvTranspose2d(nn.Module):
-#     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, output_padding=0, bias=True,
-#                  activation=None):
-#         super(SeparableConvTranspose2d, self).__init__()
-#
-#         self.depthwise = nn.ConvTranspose2d(in_channels, in_channels, kernel_size, stride, padding, output_padding,
-#                                             groups=in_channels, bias=False)
-#         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=bias)
-#
-#         if activation == "gelu":
-#             self.activation = nn.GELU()
-#         elif activation:
-#             self.activation = nn.ReLU(activation)
-#         else:
-#             self.activation = None
-#
-#     def forward(self, x):
-#         x = self.depthwise(x)
-#         x = self.pointwise(x)
-#         if self.activation is not None:
-#             x = self.activation(x)
-#         return x
-
-
-# class ResidualBlock(nn.Module):
-#     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True, activation=None):
-#         super(ResidualBlock, self).__init__()
-#
-#         self.conv1 = SeparableConv2d(in_channels, out_channels, kernel_size, stride, padding, bias, activation)
-#         self.conv2 = SeparableConv2d(out_channels, out_channels, kernel_size, stride, padding, bias, activation)
-#
-#     def forward(self, x):
-#         residual = x
-#         x = self.conv1(x)
-#         x = self.conv2(x)
-#         x += residual
-#         return x
-
-
-# class ConvBlock(nn.Module):
-#     """Convolutional block with two separable convolutions and a max pooling layer."""
-#
-#     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True, activation="gelu"):
-#         super(ConvBlock, self).__init__()
-#         self.conv1 = SeparableConv2d(in_channels, out_channels, kernel_size, stride, padding, bias, activation)
-#         self.conv2 = SeparableConv2d(out_channels, out_channels, kernel_size, stride, padding, bias, activation)
-#         self.pool = MaxPool2d()
-#
-#     def forward(self, x):
-#         x = self.conv1(x)
-#         x = self.conv2(x)
-#         return self.pool(x)
-
-# """
-# import torch
-# from torch import nn
-# from torch.nn import functional as F
-# from timm.models.layers import trunc_normal_, DropPath
-#
-# class GRN(nn.Module): # Gated Residual Networks
-#
-#     def __init__(self, dim):
-#         super().__init__()
-#         self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
-#         self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
-#
-#     def forward(self, x):
-#         Gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
-#         Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
-#         return self.gamma * (x * Nx) + self.beta + x
-# """
