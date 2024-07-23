@@ -1,97 +1,205 @@
-# InPainTor 🎨 (Work in Progress...)
+# InPainTor 🎨 : Context-Aware Segmentation and Inpainting in Real-Time
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
+[![Conda](https://img.shields.io/badge/conda-environment-green.svg)](https://docs.conda.io/en/latest/)
 
 ---
-<center>
-    <a href="https://ciic.ipleiria.pt/">
-        <img src="assets/CIIC_FCT_logo.png" width="750px" alt="CIIC CT Logo"/>
-    </a>
-</center>
+<p align="center">
+  <a href="https://ciic.ipleiria.pt/">
+    <img src="assets/CIIC_FCT_logo.png" width="700px" alt="CIIC CT Logo"/>
+  </a>
+</p>
 
 ---
 
-## Description
+InPainTor is a cutting-edge deep learning model designed for context-aware segmentation and inpainting in real-time. It
+excels at recognizing objects and performing inpainting on specific objects while preserving the surrounding context.
 
 ![Training](assets/training_gif.gif)
 
-The **InPainTor** model has the capability to recognize objects and perform inpainting on specific objects in real-time.
+## 🚀 Features
 
-This enables the model to selectively remove and fill in missing or unwanted objects in images, while preserving the
-surrounding context.
+- Real-time object recognition and inpainting
+- Selective removal and filling of missing or unwanted objects
+- Context preservation during inpainting
+- Two-stage training process: segmentation and inpainting
+- Support for COCO and RORD datasets
 
-## TODO:
+## 🛠️ Installation
 
-    1. Train the model on the RORD dataset. (In progress...)
-    2. Correct logging system.
-    3. Test the model performance.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/InPainTor.git
+   cd InPainTor
+   ```
 
-## Environment setup
+2. Create and activate the Conda environment:
+   ```bash
+   conda env create -f environment.yml
+   conda activate inpaintor
+   ```
 
-### Conda environment
+## 🖥️ Usage
+
+### Training
+
+To train the InPainTor model:
 
 ```bash
-conda env create -f environment.yml
-conda activate inpaintor
+python src/train.py --coco_data_dir <path_to_COCO> --rord_data_dir <path_to_RORD> --seg_epochs <num_epochs> --inpaint_epochs <num_epochs>
 ```
 
-## Datasets
+<details>
+<summary>Click to view all training arguments</summary>
 
-### **RORD**: A Real-world Object Removal Dataset
+- `--coco_data_dir`: Path to the COCO 2017 dataset directory (default: '/media/tiagociiic/easystore/COCO_dataset')
+- `--rord_data_dir`: Path to the RORD dataset directory (default: '/media/tiagociiic/easystore/RORD_dataset')
+- `--seg_epochs`: Number of epochs for segmentation training (default: 10)
+- `--inpaint_epochs`: Number of epochs for inpainting training (default: 10)
+- `--batch_size`: Batch size for training (default: 2)
+- `--learning_rate`: Learning rate for the optimizer (default: 0.1)
+- `--image_size`: Size of the input images, assumed to be square (default: 512)
+- `--mask_size`: Size of the masks, assumed to be square (default: 256)
+- `--model_name`: Name of the model (default: 'InPainTor')
+- `--log_interval`: Log interval for training (default: 1000)
+- `--resume_checkpoint`: Path to the checkpoint to resume training from (default: None)
+- `--selected_classes`: List of class IDs for inpainting (default: [1, 72, 73, 77])
 
-Source. https://github.com/Forty-lock/RORD
+</details>
 
-### **PAL4Inpaint**: Perceptual Artifacts Localization for Inpainting
+### Inference
 
-**Rejected 🚫**: Lack of semantic information (object segmentation).
+To perform inference using the trained InPainTor model:
 
-Source: https://github.com/owenzlz/PAL4Inpaint/tree/main
+```bash
+python src/inference.py --model_path "path/to/model.pth" --data_dir "path/to/data" --image_size 512 --mask_size 256 --batch_size 1 --output_dir "path/to/outputs"
+```
 
-## Repo structure
+## 📁 Project Structure
+
+<details>
+<summary>Click to view the repository structure</summary>
 
 ```plaintext
-InpaintTor/ 
-├── assets/                   📂: Repo assets
-│   └── img.png
+InpainTor/ 
+├── assets/                   📂: Repository assets (images, logos, etc.)
 ├── checkpoints/              💾: Model checkpoints
-│   ├── best_model.pth
-│   └── ...
-├── data/                     📂: Dataset files
-│   └── CamVid
-│   └── .gitkeep
 ├── logs/                     📃: Log files
 ├── notebooks/                📓: Jupyter notebooks
-│   ├── 0_General_testing.ipynb                   📊: General testing
-│   ├── 1_PA4Inpaint_dataset_analysis.ipynb       📊: Dataset analysis
-│   ├── 1_RODR_dataset_analysis_processing.ipynb  📊: Dataset analysis
-│   ├── 2_RORDDataset_class_test.ipynb            📊: Dataset testing
-│   ├── 3_Create_data_splits.ipynb                📊: Data split creation
-│   └── ...
-├── outputs/                  📺: Output files generated during inference
+├── outputs/                  📺: Output files generated during inference, training and debugging
 ├── src/                      📜: Source code files
 │   ├── __init__.py           📊: Initialization file
-│   ├── data_augmentation.py  📑: Data augmentation
-│   ├── dataset.py            📊: Dataset implementation
+│   ├── data_augmentation.py  📑: Data augmentation operations
+│   ├── dataset.py            📊: Dataset loading and preprocessing
+│   ├── debug_model.py        📊: Model debugging
 │   ├── inference.py          📊: Inference script
-│   ├── model.py              📑: Inpaintor model implementation
 │   ├── layers.py             📊: Model layers
-│   ├── logger.py             📊: Logger implementation
-│   └── train.py              📊: Training script
+│   ├── losses.py             📊: Loss functions
+│   ├── model.py              📑: InpainTor model implementation
+│   ├── train.py              📊: Training script
+│   └── visualizations.py     📊: Visualization functions
 ├── .gitignore                🚫: Files to ignore in Git
 ├── environment.yml           🎛️: Conda environment configuration
-├── main.py                   📜: Entry point for the Inpaintor model
-└── README.md                 📖: Project README file
-
+├── README.md                 📖: Project README file
+└── main.py                   📜: Entry point for the InpainTor model
 ```
 
-Acknowledgements
-----------------
+</details>
+
+## 🧠 Model Architecture
+
+The InPainTor model consists of three main components:
+
+1. **SharedEncoder**: Encodes input images into a series of feature maps.
+2. **SegmentorDecoder**: Decodes encoded features into segmentation masks.
+3. **GenerativeDecoder**: Uses segmentation information to generate inpainted images.
+
+The model is designed to be flexible, allowing for freezing and unfreezing of specific parts during training.
+
+## 📊 Dataset Requirements
+
+<details>
+<summary>RORD Inpainting Dataset Structure</summary>
+
+The [RORD dataset](https://github.com/Forty-lock/RORD) should be organized as follows:
+
+```
+root_dir/
+├── train/
+│   ├── img/
+│   │   ├── image1.jpg
+│   │   ├── image2.jpg
+│   │   └── ...
+│   └── gt/
+│       ├── image1.jpg
+│       ├── image2.jpg
+│       └── ...
+└── val/
+    ├── img/
+    │   ├── image1.jpg
+    │   ├── image2.jpg
+    │   └── ...
+    └── gt/
+        ├── image1.jpg
+        ├── image2.jpg
+        └── ...
+```
+
+</details>
+
+<details>
+<summary>COCO Segmentation Dataset Structure</summary>
+
+The [COCO dataset](https://cocodataset.org/#home) (2017 version with 91 classes) should be organized as follows:
+
+```
+root_dir/
+├── train/
+│   ├── img/
+│   │   ├── image1.jpg
+│   │   ├── image2.jpg
+│   │   └── ...
+│   └── gt/
+│       ├── image1.jpg
+│       ├── image2.jpg
+│       └── ...
+└── val/
+    ├── img/
+    │   ├── image1.jpg
+    │   ├── image2.jpg
+    │   └── ...
+    └── gt/
+        ├── image1.jpg
+        ├── image2.jpg
+        └── ...
+```
+
+For more information on COCO dataset classes, refer
+to [this link](https://tech.amikelive.com/node-718/what-object-categories-labels-are-in-coco-dataset/).
+
+</details>
+
+## 🤝 Contributing
+
+Contributions to the InPainTor project are welcome! Please follow these steps to contribute:
+
+1. Fork the repository
+2. Create a new branch for your feature or bug fix
+3. Commit your changes
+4. Push to your fork and submit a pull request
+
+We appreciate your contributions to improve InPainTor!
+
+## 🙏 Acknowledgements
 
 This work is funded by FCT - Fundação para a Ciência e a Tecnologia, I.P., through project with reference
 2022.09235.PTDC.
 
-
-
-License
--------
+## 📄 License
 
 This project is licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
 
+---
+
+For more information or support, please open an issue in the GitHub repository.
