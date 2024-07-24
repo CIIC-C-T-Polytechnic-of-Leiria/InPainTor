@@ -425,4 +425,4 @@ if __name__ == '__main__':
     trainer.train_inpainting(args.inpaint_epochs, args.resume_checkpoint)
 
     # Plot training log
-    plot_training_log(file_path=loguru.logger.handlers[0].baseFilename)
+    plot_training_log(file_path=log_file)

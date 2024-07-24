@@ -11,13 +11,9 @@ visualizations.py
         save_train_images_v2: Save a grid of images for visualization during training or validation.
 """
 
-import datetime
 import os
-import re
 
 import imageio.v2 as imageio
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
@@ -73,51 +69,95 @@ def video_from_images(image_folder: str, output_video_path: str, fps: int = 30, 
     print(f"Video details: {len(image_files)} frames, {fps} fps")
 
 
-def plot_training_log(file_path, log_scale=False, log_interval=1):
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import re
+import datetime
+
+
+def plot_training_log(file_path, log_scale=False, log_interval=1, save_path=None):
     """
-    Plot the training and validation loss from a log file.
+    Plot the training loss for segmentation and inpainting stages from a log file in separate subplots and optionally save the plot.
     Parameters:
         file_path (str): Path to the log file.
         log_scale (bool): Whether to use log scale for the y-axis.
         log_interval (int): The interval at which the losses were logged.
+        save_path (str): Path to save the plot. If None, the plot is displayed instead.
     """
 
     mpl.rcParams['font.family'] = 'serif'
     mpl.rcParams['font.serif'] = ['cmr10']
     mpl.rcParams['axes.formatter.use_mathtext'] = True
 
-    # Regular expression to extract data from each line
-    pattern = r".+Epoch (\d+), Loss: ([\d\.]+), Val Loss: ([\d\.]+), Best Val Loss: ([\d\.]+), Timestamp: (.+)"
+    # Updated regular expression to extract data from each line with flexible line number
+    pattern = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \| INFO     \| __main__:log_and_save_images:\d+ - (Segmentation|Inpainting) - Epoch (\d+), Step (\d+), Train Loss: ([\d\.]+)"
 
-    epoch, loss, val_loss, best_val_loss, timestamp = [], [], [], [], []
+    segmentation_steps, segmentation_losses = [], []
+    inpainting_steps, inpainting_losses = [], []
 
     # Open the file and read it line by line
     with open(file_path, 'r') as f:
         for line in f:
             match = re.match(pattern, line)
             if match:
-                epoch.append(int(match.group(1)))
-                loss.append(float(match.group(2)))
-                val_loss.append(float(match.group(3)))
-                best_val_loss.append(float(match.group(4)))
-                timestamp.append(datetime.datetime.strptime(match.group(5), "%Y-%m-%d %H:%M:%S"))
+                timestamp, stage, epoch, step, loss = match.groups()
+                step = int(step)
+                loss = float(loss)
 
-    # Plot the results
-    plt.grid(visible=True, color='gray', linestyle='--', linewidth=0.5)
-    plt.plot([x for x in epoch if x % log_interval == 0],
-             [loss[i] for i in range(len(loss)) if epoch[i] % log_interval == 0], label='Train Loss', marker='o',
-             linestyle='-', linewidth=0.5, markersize=2)
-    plt.plot([x for x in epoch if x % log_interval == 0],
-             [val_loss[i] for i in range(len(val_loss)) if epoch[i] % log_interval == 0], label='Val Loss', marker='o',
-             linestyle='-', linewidth=0.5, markersize=2)
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Loss')
-    plt.legend()
-    if log_scale:
-        plt.yscale('log')
-    # Show the plot
-    plt.show(block=False)
+                if stage == "Segmentation":
+                    segmentation_steps.append(step)
+                    segmentation_losses.append(loss)
+                else:  # Inpainting
+                    inpainting_steps.append(step)
+                    inpainting_losses.append(loss)
+
+    # Determine how many stages are present
+    stages_present = sum([bool(segmentation_steps), bool(inpainting_steps)])
+
+    # Create the plot with subplots
+    fig, axs = plt.subplots(stages_present, 1, figsize=(12, 6 * stages_present), sharex=True)
+
+    if stages_present == 1:
+        axs = [axs]  # Make axs iterable when there's only one subplot
+
+    plot_index = 0
+
+    # Plot segmentation loss if present
+    if segmentation_steps:
+        axs[plot_index].grid(visible=True, color='gray', linestyle='--', linewidth=0.5, alpha=0.3)
+        axs[plot_index].plot(segmentation_steps, segmentation_losses, label='Segmentation Loss',
+                             marker='o', linestyle='-', linewidth=1, markersize=3, color='tab:blue')
+        axs[plot_index].set_ylabel('Loss')
+        axs[plot_index].set_title('Segmentation Training Loss')
+        axs[plot_index].legend()
+        if log_scale:
+            axs[plot_index].set_yscale('log')
+        plot_index += 1
+
+    # Plot inpainting loss if present
+    if inpainting_steps:
+        axs[plot_index].grid(visible=True, color='gray', linestyle='--', linewidth=0.5, alpha=0.3)
+        axs[plot_index].plot(inpainting_steps, inpainting_losses, label='Inpainting Loss',
+                             marker='s', linestyle='-', linewidth=1, markersize=3, color='orange')
+        axs[plot_index].set_ylabel('Loss')
+        axs[plot_index].set_title('Inpainting Training Loss')
+        axs[plot_index].legend()
+        if log_scale:
+            axs[plot_index].set_yscale('log')
+
+    # Set common x-label
+    fig.text(0.5, 0.04, 'Step', ha='center')
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save or display the plot
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Plot saved to {save_path}")
+    else:
+        plt.show()
 
 
 def save_images_on_grid(binary_images: torch.Tensor, output_path: str) -> None:
