@@ -133,7 +133,19 @@ The model is designed to be flexible, allowing for freezing and unfreezing of sp
   <img src="assets/model_components.jpeg" width="700px" style="border: 1px solid gray" alt="Model">
 </center>
 
+**Model Concept**
+<center>
+  <img src="assets/model_concept.jpeg" width="400px" style="border: 1px solid gray" alt="Model">
+</center>
+
 **Model Training Process**
+
+<center>
+  <img src="assets/model_training_stages.jpeg" width="400px" style="border: 1px solid gray" alt="Model">
+</center>
+
+**Example of Loss During Training Stages**
+
 <center>
   <img src="assets/plot_training_log_full.png" width="700px" style="border: 1px solid gray" alt="Model">
 </center>
@@ -198,6 +210,56 @@ root_dir/
 
 For more information on COCO dataset classes, refer
 to [this link](https://tech.amikelive.com/node-718/what-object-categories-labels-are-in-coco-dataset/).
+
+</details>
+
+## 🔮 Current Limitations and Future Work
+
+<details>
+
+<summary>Limitations</summary>
+
+1. **Segmentation Performance**:
+    - The current segmentation model works relatively well for small datasets with limited variety
+    - It struggles with larger, more diverse datasets like COCO 2017.
+
+2. **Generator Performance**:
+    - The current generator architecture may be too simplistic, particularly in the layers following the masking
+      process.
+    - The frozen encoder in the generator could be limiting the model's learning capacity.
+
+3. **Hardware Constraints**:
+    - Memory limitations restrict model size and batch processing capabilities.
+    - Impacts choice of architectures and training strategies.
+
+4. **No Data Augmentation**:
+    - Not currently integrated into the training pipeline (but the implementation is 90% ready)
+
+</details>
+
+
+<details>
+
+<summary>Future Work</summary>
+
+1. **Improve Segmentation Section**:
+    - Investigate and implement more sophisticated segmentation architectures like **ENet** or **BiSeNet**
+    - Check if itś possible to adapt pre-trained models to this architecture.
+
+2. **Enhance Generator Architecture**:
+    - Increase the number of parameters and layers after the masking process in the generator.
+    - Experiment with more sophisticated generator designs, potentially allowing (limited) parts of the encoder to be
+      trainable.
+
+3. **Experiment with Cost Functions**:
+    - Test and evaluate alternative loss functions.
+    - Consider multi-objective loss functions that balance different aspects of the inpainting task.
+
+4. **Incorporate Data Augmentation**:
+    - Integrate the already implemented data augmentation techniques into the training pipeline.
+
+5. **Evaluation Metrics**:
+    - Implement evaluation metrics to better assess the quality of inpainted images.
 
 </details>
 
