@@ -133,6 +133,11 @@ The model is designed to be flexible, allowing for freezing and unfreezing of sp
   <img src="assets/model_components.jpeg" width="700px" style="border: 1px solid gray" alt="Model">
 </center>
 
+**Model Training Process**
+<center>
+  <img src="assets/plot_training_log_full.png" width="700px" style="border: 1px solid gray" alt="Model">
+</center>
+
 ## 📊 Dataset Requirements
 
 <details>
