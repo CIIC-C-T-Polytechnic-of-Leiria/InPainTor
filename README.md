@@ -1,4 +1,4 @@
-# InPainTor🎨 : Context-Aware Segmentation and Inpainting in Real-Time
+# InPainTor🎨: Context-Aware Segmentation and Inpainting in Real-Time
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
@@ -82,6 +82,18 @@ To perform inference using the trained InPainTor model:
 python src/inference.py --model_path "path/to/model.pth" --data_dir "path/to/data" --image_size 512 --mask_size 256 --batch_size 1 --output_dir "path/to/outputs"
 ```
 
+<details>
+<summary>Click to view all inference arguments</summary>
+
+- `--model_path`: Path to the trained model checkpoint
+- `--data_dir`: Path to the directory containing images for inference
+- `--image_size`: Size of the input images, assumed to be square (default: 512)
+- `--mask_size`: Size of the masks, assumed to be square (default: 256)
+- `--batch_size`: Batch size for inference (default: 1)
+- `--output_dir`: Path to the directory to save the inpainted images
+
+</details>
+
 ## 📁 Project Structure
 
 <details>
@@ -121,24 +133,25 @@ The InPainTor model consists of three main components:
 2. **SegmentorDecoder**: Decodes encoded features into segmentation masks.
 3. **GenerativeDecoder**: Uses segmentation information to generate inpainted images.
 
-The model is designed to be flexible, allowing for freezing and unfreezing of specific parts during training.
+### Overview of InPainTor Model Architecture
 
-**Overall Model Architecture**
 <center>
-  <img src="assets/model_full.jpeg" height="300px" style="border: 1px solid gray" alt="Model">
+  <img src="assets/model_full.jpeg" height="400px" style="border: 1px solid gray" alt="Model">
 </center>
 
-**Model Components in Detail**
+### Model Components in Detail
+
 <center>
   <img src="assets/model_components.jpeg" width="700px" style="border: 1px solid gray" alt="Model">
 </center>
 
-**Model Concept**
+### Model Concept
+
 <center>
   <img src="assets/model_concept.jpeg" width="600px" style="border: 1px solid gray" alt="Model">
 </center>
 
-**Model Training Process**
+### Model Training Process
 
 1. Train SharedEncoder and SegmentorDecoder for accurate segmentation
 2. Freeze SharedEncoder and and SegmentorDecoder, train GenerativeDecoder.
@@ -147,7 +160,7 @@ The model is designed to be flexible, allowing for freezing and unfreezing of sp
   <img src="assets/model_training_stages.jpeg" width="600px" style="border: 1px solid gray" alt="Model">
 </center>
 
-**Example of Loss During Training Stages**
+### Example of Loss During Training Stages
 
 <center>
   <img src="assets/plot_training_log_full.png" width="700px" style="border: 1px solid gray" alt="Model">
