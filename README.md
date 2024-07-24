@@ -135,7 +135,7 @@ The model is designed to be flexible, allowing for freezing and unfreezing of sp
 
 **Model Concept**
 <center>
-  <img src="assets/model_concept.jpeg" width="400px" style="border: 1px solid gray" alt="Model">
+  <img src="assets/model_concept.jpeg" width="600px" style="border: 1px solid gray" alt="Model">
 </center>
 
 **Model Training Process**
@@ -144,7 +144,7 @@ The model is designed to be flexible, allowing for freezing and unfreezing of sp
 2. Freeze SharedEncoder and and SegmentorDecoder, train GenerativeDecoder.
 
 <center>
-  <img src="assets/model_training_stages.jpeg" width="400px" style="border: 1px solid gray" alt="Model">
+  <img src="assets/model_training_stages.jpeg" width="600px" style="border: 1px solid gray" alt="Model">
 </center>
 
 **Example of Loss During Training Stages**
