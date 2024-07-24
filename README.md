@@ -53,7 +53,7 @@ This project is currently under development. Use with caution and expect changes
 To train the InPainTor model:
 
 ```bash
-python src/train.py --coco_data_dir <path_to_COCO> --rord_data_dir <path_to_RORD> --seg_epochs <num_epochs> --inpaint_epochs <num_epochs>
+python src/train.py --coco_data_dir "path/to/COCO" --rord_data_dir "path/to/RORD" --seg_epochs <num_epochs> --inpaint_epochs <num_epochs>
 ```
 
 <details>
@@ -79,7 +79,7 @@ python src/train.py --coco_data_dir <path_to_COCO> --rord_data_dir <path_to_RORD
 To perform inference using the trained InPainTor model:
 
 ```bash
-python src/inference.py --model_path "path/to/model.pth" --data_dir "path/to/data" --image_size 512 --mask_size 256 --batch_size 1 --output_dir "path/to/outputs"
+python src/inference.py --model_path "path/to/model.pth" --data_dir "path/to/data" --image_size 512 --mask_size 256 --batch_size <num_examples_per_batch> --output_dir "path/to/outputs"
 ```
 
 <details>
