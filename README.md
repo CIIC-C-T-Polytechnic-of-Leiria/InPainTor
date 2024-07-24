@@ -140,7 +140,7 @@ The model is designed to be flexible, allowing for freezing and unfreezing of sp
 
 **Model Training Process**
 
-1. T rain SharedEncoder and SegmentorDecoder for accurate segmentation
+1. Train SharedEncoder and SegmentorDecoder for accurate segmentation
 2. Freeze SharedEncoder and and SegmentorDecoder, train GenerativeDecoder.
 
 <center>
