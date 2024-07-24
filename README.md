@@ -120,7 +120,7 @@ InpainTor/
 ├── .gitignore                🚫: Files to ignore in Git
 ├── environment.yml           🎛️: Conda environment configuration
 └── README.md                 📖: Project README file
-
+```
 </details>
 
 ## 🧠 Model Architecture
