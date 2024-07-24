@@ -119,9 +119,7 @@ InpainTor/
 │   └── visualizations.py     📊: Visualization functions
 ├── .gitignore                🚫: Files to ignore in Git
 ├── environment.yml           🎛️: Conda environment configuration
-├── README.md                 📖: Project README file
-└── main.py                   📜: Entry point for the InpainTor model
-```
+└── README.md                 📖: Project README file
 
 </details>
 
