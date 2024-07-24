@@ -59,8 +59,8 @@ python src/train.py --coco_data_dir <path_to_COCO> --rord_data_dir <path_to_RORD
 <details>
 <summary>Click to view all training arguments</summary>
 
-- `--coco_data_dir`: Path to the COCO 2017 dataset directory (default: '/media/tiagociiic/easystore/COCO_dataset')
-- `--rord_data_dir`: Path to the RORD dataset directory (default: '/media/tiagociiic/easystore/RORD_dataset')
+- `--coco_data_dir`: Path to the COCO 2017 dataset directory
+- `--rord_data_dir`: Path to the RORD dataset directory
 - `--seg_epochs`: Number of epochs for segmentation training (default: 10)
 - `--inpaint_epochs`: Number of epochs for inpainting training (default: 10)
 - `--batch_size`: Batch size for training (default: 2)
